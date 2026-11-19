@@ -1,0 +1,2022 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дашборд анализа ТСД (WMS)</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+    <!-- Tom Select CSS & JS для мультивыбора -->
+    <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; font-size: 0.9rem; }
+        .card { box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: none; margin-bottom: 1rem; }
+        .stat-card { text-align: center; padding: 1rem; }
+        .stat-value { font-size: 1.8rem; font-weight: bold; }
+        .stat-label { font-size: 0.8rem; color: #6c757d; text-transform: uppercase; }
+        .stat-ok { color: #198754; }
+        .stat-warn { color: #ffc107; }
+        .stat-danger { color: #dc3545; }
+        .filter-panel { background: #fff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
+        .nav-tabs .nav-link { font-size: 0.85rem; }
+        .json-panel {
+            background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px;
+            max-height: 500px; overflow-y: auto; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px;
+        }
+        .json-panel pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; }
+        .loading { text-align: center; padding: 20px; color: #6c757d; }
+        .btn-details { padding: 2px 8px; font-size: 0.75rem; }
+
+        /* Курсор-указатель для кликабельных строк */
+        .table tbody tr {
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+
+        .table tbody tr:hover {
+            background-color: #f8f9fa !important;
+        }
+
+        /* Выделение строки при наведении */
+        .table tbody tr:hover td {
+            background-color: #e9ecef !important;
+        }
+
+        /* Исключаем кнопки из эффекта наведения */
+        .table tbody tr .btn:hover {
+            background-color: var(--bs-btn-hover-bg) !important;
+        }
+
+        /* Выделение важных методов в выпадающем списке */
+        option.important-method {
+            font-weight: bold !important;
+            color: #0d6efd !important; /* Синий цвет Bootstrap */
+            background-color: #f8f9fa;
+        }
+
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-3">
+    <div class="container-fluid">
+        <span class="navbar-brand mb-0 h1">📟 Дашборд анализа ТСД (WMS)</span>
+        <div id="db-status" class="d-flex align-items-center gap-3" style="background: rgba(0,0,0,0.25); padding: 8px 14px; border-radius: 8px; backdrop-filter: blur(4px);">
+            <span class="text-white fw-bold" style="font-size: 0.95rem;">
+                <i class="bi bi-database-fill-check me-1"></i>
+                БД активна | Событий: <span id="stat-events">—</span>
+            </span>
+            <span class="text-white-50" style="font-size: 0.85rem; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 12px;">
+                <i class="bi bi-cloud-arrow-down-fill me-1"></i>
+                Загрузка: <span id="stat-last-import" class="text-white">—</span>
+            </span>
+            <span class="text-white-50" style="font-size: 0.85rem; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 12px;">
+                <i class="bi bi-calendar-event-fill me-1"></i>
+                Макс. событие: <span id="stat-max-event" class="text-white">—</span>
+            </span>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid">
+    <!-- Сводная статистика -->
+    <div class="row mb-3" id="summary-row">
+        <div class="col-md-2"><div class="card stat-card"><div class="stat-value" id="stat-total">-</div><div class="stat-label">Всего пар</div></div></div>
+        <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-ok" id="stat-ok">-</div><div class="stat-label">Успешно</div></div></div>
+        <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-warn" id="stat-no-resp">-</div><div class="stat-label">Без ответа</div></div></div>
+        <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-danger" id="stat-no-req">-</div><div class="stat-label">Без запроса</div></div></div>
+        <div class="col-md-2"><div class="card stat-card"><div class="stat-value" id="stat-avg">-</div><div class="stat-label">Среднее (мс)</div></div></div>
+        <div class="col-md-2"><div class="card stat-card"><div class="stat-value" id="stat-p95">-</div><div class="stat-label">P95 (мс)</div></div></div>
+    </div>
+
+    <!-- Панель фильтров -->
+<div class="filter-panel">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label">Период</label>
+            <input type="text" id="filter-date-range" class="form-control form-control-sm" placeholder="ГГГГ-ММ-ДД ЧЧ:ММ:СС">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Метод</label>
+            <select id="filter-method" class="form-select form-select-sm" multiple placeholder="Выберите методы..."></select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Action</label>
+            <select id="filter-action" class="form-select form-select-sm" multiple placeholder="Сначала выберите метод..."></select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">ТСД (device)</label>
+            <select id="filter-device" class="form-select form-select-sm" multiple placeholder="Выберите ТСД..."></select>
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">&gt; N сек</label>
+            <input type="number" id="filter-threshold" class="form-control form-control-sm" value="0" min="0" step="0.1">
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">ID запроса</label>
+            <input type="number" id="filter-request-id" class="form-control form-control-sm" placeholder="ID">
+        </div>
+        <div class="col-md-1">
+            <label class="form-label">Статус</label>
+            <select id="filter-status" class="form-select form-select-sm">
+                <option value="">Все</option>
+                <option value="ok">Успешно</option>
+                <option value="no_response">Без ответа</option>
+                <option value="no_request">Без запроса</option>
+            </select>
+        </div>
+
+        <div class="col-md-2">
+            <label class="form-label">🔍 Поиск в теле запроса</label>
+            <input type="text" id="filter-body-search" class="form-control form-control-sm" placeholder="Текст для поиска...">
+        </div>
+
+
+        <div class="col-md-1">
+            <button class="btn btn-primary btn-sm w-100" onclick="applyFilters()">🔍</button>
+        </div>
+        <div class="col-md-1">
+            <button class="btn btn-outline-secondary btn-sm w-100" onclick="resetFilters()">🔄</button>
+        </div>
+        <div class="col-md-1">
+            <button class="btn btn-success btn-sm w-100" data-bs-toggle="modal" data-bs-target="#exportModal">
+                📥 Выгрузить
+            </button>
+        </div>
+
+    </div>
+</div>
+
+    <!-- Вкладки -->
+    <ul class="nav nav-tabs mb-3" id="myTab" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-pairs">📋 Таблица событий</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-slow">⏱ Медленные (>N сек)</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-orphans">️Без ответа/запроса</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-top">Топ по ТСД</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-chart">📈 График всплесков</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-stats"> Статистика методов</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-errors" type="button">❌ Ошибки ТСД</button>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-error-stats" type="button">Статистика ошибок</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-api-docs" type="button">📚 Примеры API</button></li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- Таблица событий -->
+        <div class="tab-pane fade show active" id="tab-pairs">
+            <div class="card p-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <h6 class="mb-0">Пары Запрос-Ответ <span id="pairs-count" class="badge bg-secondary"></span></h6>
+                    <button class="btn btn-sm btn-outline-primary" onclick="applyFilters()">🔄 Обновить</button>
+                </div>
+
+                <!-- НОВОЕ: Сообщение о процессе поиска -->
+                <div id="search-status-msg" class="alert alert-info py-2 mb-2 d-none" role="alert">
+                    <i class="bi bi-hourglass-split me-2"></i>
+                    Выполняется поиск по телу запроса: <strong id="search-term-display"></strong>. Пожалуйста, подождите...
+                </div>
+
+                <div class="table-responsive">
+                    <table id="pairsTable" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Время запроса</th>
+                                <th>Время ответа</th>
+                                <th>Метод</th>
+                                <th>Action</th>
+                                <th>ТСД</th>
+                                <th>Длит. (мс)</th>
+                                <th>ID запроса</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pairs-body"><tr><td colspan="7" class="loading">Загрузка...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Медленные запросы -->
+        <div class="tab-pane fade" id="tab-slow">
+            <div class="card p-3">
+                <h6 class="mb-3">⏱ Запросы, превысившие порог <span id="slow-threshold-label">1</span> сек</h6>
+                <div class="table-responsive">
+                    <table id="slowTable" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Время запроса</th>
+                                <th>Время ответа</th>
+                                <th>Метод</th>
+                                <th>Action</th>
+                                <th>ТСД</th>
+                                <th>Терминал</th>
+                                <th>Длит. (мс)</th>
+                                <th>ID запроса</th>
+                            </tr>
+                        </thead>
+                        <tbody id="slow-body"><tr><td colspan="8" class="loading">Загрузка...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- Осиротевшие -->
+        <div class="tab-pane fade" id="tab-orphans">
+            <div class="card p-3">
+                <h6 class="mb-3 text-danger">️ Реестр запросов без ответа</h6>
+                <div class="table-responsive">
+                    <table id="orphansTable" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="table-light">
+                            <!-- УБРАН лишний <th></th> в конце -->
+                            <tr><th>ID</th><th>Метод</th><th>ТСД</th><th>Терминал</th><th>Статус</th><th>Время</th><th>Сессия</th></tr>
+                        </thead>
+                        <!-- ИСПРАВЛЕН colspan на 7 -->
+                        <tbody id="orphans-body"><tr><td colspan="7" class="loading">Загрузка...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Топ по ТСД -->
+        <div class="tab-pane fade" id="tab-top">
+            <div class="card p-3">
+                <h6 class="mb-3">🏆 Топ самых медленных методов в разрезе ТСД</h6>
+                <div class="table-responsive">
+                    <table id="topTable" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ТСД</th>
+                                <th>Метод</th>
+                                <th>Кол-во</th>
+                                <th>Среднее (мс)</th>
+                                <th>Макс (мс)</th>
+                                <th>Сумма (мс)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top-body">
+                            <tr><td colspan="6" class="loading">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- График -->
+        <div class="tab-pane fade" id="tab-chart">
+            <div class="card p-3">
+                <h6 class="mb-3">📈 Всплески времени обработки по минутам</h6>
+                <div style="height: 400px;"><canvas id="hourlyChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Статистика методов -->
+        <div class="tab-pane fade" id="tab-stats">
+            <div class="card p-3">
+                <h6 class="mb-3"> Статистика по методам</h6>
+                <div class="table-responsive">
+                    <table id="statsTable" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Метод</th>
+                                <th>Успешно</th>
+                                <th>Без ответа</th>
+                                <th>Без запроса</th>
+                                <th title="Среднее время обработки">Среднее (мс)</th>
+                                <th title="Медиана: 50% запросов быстрее этого значения">P50 (мс)</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="95-й перцентиль: 95% запросов выполняются быстрее этого времени. Отсекает редкие единичные 'тормоза' и показывает реальную производительность для большинства.">P95 (мс)</th>
+                                <th data-bs-toggle="tooltip" data-bs-placement="top" title="99-й перцентиль: 99% запросов выполняются быстрее этого времени. Показывает производительность даже для самых медленных 1% запросов (строгий SLA).">P99 (мс)</th>
+                                <th>Макс (мс)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stats-body"><tr><td colspan="9" class="loading">Загрузка...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- Вкладка Ошибки ТСД -->
+        <div class="tab-pane fade" id="tab-errors">
+            <div class="card p-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <h6 class="mb-0 text-danger">❌ Реестр ошибок ТСД</h6>
+                    <button class="btn btn-sm btn-outline-danger" onclick="loadErrors()">🔄 Обновить</button>
+                </div>
+                <div class="table-responsive">
+                    <table id="errorsTable" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Время</th>
+                                <th>Метод</th>
+                                <th>ТСД</th>
+                                <th>Терминал</th>
+                                <th>Пользователь</th>
+                                <th>Текст ошибки</th>
+                            </tr>
+                        </thead>
+                        <tbody id="errors-body">
+                            <tr><td colspan="6" class="loading">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <!-- Вкладка Статистика ошибок по ТСД -->
+        <div class="tab-pane fade" id="tab-error-stats">
+            <div class="card p-3">
+                <div class="d-flex justify-content-between mb-2">
+                    <h6 class="mb-0 text-danger">📊 Статистика ошибок по ТСД и методам</h6>
+                    <button class="btn btn-sm btn-outline-danger" onclick="loadErrorStats()">🔄 Обновить</button>
+                </div>
+                <div class="table-responsive">
+                    <table id="errorStatsTable" class="table table-striped table-hover table-sm" style="width:100%">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ТСД (device)</th>
+                                <th>Метод</th>
+                                <th>Кол-во ошибок</th>
+                                <th>Уникальных терминалов</th>
+                                <th>Уникальных пользователей</th>
+                                <th>Первая ошибка</th>
+                                <th>Последняя ошибка</th>
+                                <th>Пример ошибки</th>
+                            </tr>
+                        </thead>
+                        <tbody id="error-stats-body">
+                            <tr><td colspan="8" class="loading">Загрузка...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+<!-- Вкладка Примеры API -->
+<div class="tab-pane fade" id="tab-api-docs">
+    <div class="card p-4">
+        <h4 class="mb-3">📚 Справочник API дашборда ТСД</h4>
+        <p class="text-muted mb-4">
+            Основные эндпоинты для программного получения данных.
+            Нажмите на заголовок, чтобы увидеть пример HTTP-запроса и формат ответа.
+        </p>
+
+        <!-- Метод 1: Медленные запросы -->
+        <details class="mb-3 border rounded p-3 bg-light">
+            <summary class="fw-bold text-primary cursor-pointer" style="cursor: pointer;">
+                1. Поиск медленных запросов (<code>/api/dashboard/slow-requests</code>)
+            </summary>
+            <div class="mt-3">
+                <p class="small text-muted mb-2">Возвращает список успешных пар, время обработки которых превысило порог.</p>
+                <h6 class="text-dark">HTTP GET Запрос:</h6>
+                <div class="position-relative mb-3">
+                    <pre class="bg-dark text-light p-2 rounded mb-0"><code>GET /api/dashboard/slow-requests?threshold_ms=5000&start_date=2026-11-02&end_date=2026-11-04&limit=10</code></pre>
+                    <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2 copy-api-btn" data-clipboard="http://192.168.100.174/api/dashboard/slow-requests?threshold_ms=5000&start_date=2026-11-02&end_date=2026-11-04&limit=10" title="Скопировать полный URL">📋 Копировать URL</button>
+                </div>
+                <h6 class="text-dark">Пример ответа (JSON):</h6>
+                <pre class="bg-dark text-light p-3 rounded" style="max-height: 300px; overflow-y: auto; font-size: 0.8rem;"><code>[
+  {
+    "request_id": 1793604104210,
+    "method": "GetGeneralDatas",
+    "device": "78:B8:D6:E4:17:8D",
+    "terminal": "S21357522514134",
+    "processing_ms": 110687,
+    "request_ts": "2026-11-02T10:23:43",
+    "response_ts": "2026-11-02T10:23:41",
+    "user_name": "RF",
+    "session_id": "23779682",
+    "pair_status": "ok"
+  }
+]</code></pre>
+            </div>
+        </details>
+
+        <!-- Метод 2: Детали события -->
+        <details class="mb-3 border rounded p-3 bg-light">
+            <summary class="fw-bold text-primary cursor-pointer" style="cursor: pointer;">
+                2. Детали события: тела запроса и ответа (<code>/api/events/{request_id}</code>)
+            </summary>
+            <div class="mt-3">
+                <p class="small text-muted mb-2">Получение полных данных (включая JSON-тела) по конкретному <code>request_id</code>.</p>
+                <h6 class="text-dark">HTTP GET Запрос:</h6>
+                <div class="position-relative mb-3">
+                    <pre class="bg-dark text-light p-2 rounded mb-0"><code>GET /api/events/1793685601570</code></pre>
+                    <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2 copy-api-btn" data-clipboard="http://192.168.100.174/api/events/1793685601570" title="Скопировать полный URL">📋 Копировать URL</button>
+                </div>
+                <h6 class="text-dark">Пример ответа (JSON):</h6>
+                <pre class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto; font-size: 0.8rem;"><code>{
+  "request_id": 1793685601570,
+  "request": {
+    "direction": "request",
+    "event_ts": "2026-11-03T09:00:02",
+    "method": "InventorySKU",
+    "device": "78:B8:D6:77:F3:5A",
+    "body_json": "{\n  \"Action\": \"ActualInventorySKUTask\"\n}",
+    "source_file": "20261103_0900.xml"
+  },
+  "response": {
+    "direction": "response",
+    "event_ts": "2026-11-03T09:02:13",
+    "method": "InventorySKU",
+    "device": "78:B8:D6:77:F3:5A",
+    "body_json": "{\n  \"Success\": true\n}",
+    "processing_ms": 131145,
+    "source_file": "20261103_0900.xml"
+  },
+  "events_count": 2
+}</code></pre>
+            </div>
+        </details>
+
+        <!-- Метод 3: Топ медленных методов -->
+        <details class="mb-3 border rounded p-3 bg-light">
+            <summary class="fw-bold text-primary cursor-pointer" style="cursor: pointer;">
+                3. Топ медленных методов в разрезе ТСД (<code>/api/dashboard/slow-methods</code>)
+            </summary>
+            <div class="mt-3">
+                <p class="small text-muted mb-2">Агрегированная статистика: какие методы на каких устройствах потребляют больше всего суммарного времени.</p>
+                <h6 class="text-dark">HTTP GET Запрос:</h6>
+                <div class="position-relative mb-3">
+                    <pre class="bg-dark text-light p-2 rounded mb-0"><code>GET /api/dashboard/slow-methods?limit=10</code></pre>
+                    <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2 copy-api-btn" data-clipboard="http://192.168.100.174/api/dashboard/slow-methods?limit=10" title="Скопировать полный URL">📋 Копировать URL</button>
+                </div>
+                <h6 class="text-dark">Пример ответа (JSON):</h6>
+                <pre class="bg-dark text-light p-3 rounded" style="max-height: 300px; overflow-y: auto; font-size: 0.8rem;"><code>[
+  {
+    "device": "78:B8:D6:E5:97:58",
+    "method": "SortByPickingSKU",
+    "paired": 41385,
+    "avg_ms": 226.5,
+    "max_ms": 79298,
+    "total_ms": 9373348
+  }
+]</code></pre>
+            </div>
+        </details>
+
+        <!-- Метод 4: Потоковый экспорт данных (НОВЫЙ) -->
+        <details class="mb-3 border rounded p-3 bg-light" open>
+            <summary class="fw-bold text-success cursor-pointer" style="cursor: pointer;">
+                4. 📥 Потоковый экспорт данных с телами запросов/ответов (<code>/api/export</code>)
+            </summary>
+            <div class="mt-3">
+                <p class="small text-muted mb-2">
+                    Позволяет выгружать данные из витрины (<code>tsd_pairs_mart</code>) напрямую в файл.
+                    <strong>Всегда включает поля</strong> <code>request_body_json</code> и <code>response_body_json</code>.
+                    Поддерживает потоковую передачу, что позволяет безопасно выгружать сотни тысяч записей.
+                </p>
+
+                <h6 class="text-dark mb-2">Доступные параметры запроса:</h6>
+                <table class="table table-sm table-bordered bg-white mb-3" style="font-size: 0.85rem;">
+                    <thead class="table-light"><tr><th>Параметр</th><th>Тип</th><th>Описание</th><th>Пример</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>format</code></td><td>str</td><td><code>csv</code> (по умолч.), <code>jsonl</code>, <code>json</code></td><td>format=jsonl</td></tr>
+                        <tr><td><code>start_date</code></td><td>str</td><td>Начало периода</td><td>2026-11-15 00:00:00</td></tr>
+                        <tr><td><code>end_date</code></td><td>str</td><td>Конец периода</td><td>2026-11-16 23:59:59</td></tr>
+                        <tr><td><code>method</code></td><td>list</td><td>Фильтр по методу (можно несколько)</td><td>method=A&method=B</td></tr>
+                        <tr><td><code>device</code></td><td>list</td><td>Фильтр по ТСД (можно несколько)</td><td>device=78:B8:D6:..</td></tr>
+                        <tr><td><code>pair_status</code></td><td>str</td><td><code>ok</code>, <code>no_response</code>, <code>no_request</code></td><td>pair_status=no_response</td></tr>
+                        <tr><td><code>min_ms</code></td><td>int</td><td>Минимальное время обработки (мс)</td><td>min_ms=5000</td></tr>
+                        <tr><td><code>limit</code></td><td>int</td><td>Макс. записей (по умолч. 10000, макс 500000)</td><td>limit=50000</td></tr>
+                    </tbody>
+                </table>
+
+                <h6 class="text-dark">Пример 1: Выгрузка медленных запросов в CSV (для Excel)</h6>
+                <div class="position-relative mb-3">
+                    <pre class="bg-dark text-light p-2 rounded mb-0"><code>curl -o slow_requests.csv "http://192.168.100.174/api/export?format=csv&method=GetGeneralDatas&min_ms=5000&start_date=2026-11-15%2000:00:00&end_date=2026-11-16%2023:59:59&limit=50000"</code></pre>
+                    <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2 copy-api-btn" data-clipboard="curl -o slow_requests.csv &quot;http://192.168.100.174/api/export?format=csv&method=GetGeneralDatas&min_ms=5000&start_date=2026-11-15%2000:00:00&end_date=2026-11-16%2023:59:59&limit=50000&quot;" title="Скопировать">📋</button>
+                </div>
+
+                <h6 class="text-dark">Пример 2: Выгрузка всех запросов без ответа в JSONL (для скриптов)</h6>
+                <div class="position-relative mb-3">
+                    <pre class="bg-dark text-light p-2 rounded mb-0"><code>curl -o orphans.jsonl "http://192.168.100.174/api/export?format=jsonl&pair_status=no_response&limit=100000"</code></pre>
+                    <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2 copy-api-btn" data-clipboard="curl -o orphans.jsonl &quot;http://192.168.100.174/api/export?format=jsonl&pair_status=no_response&limit=100000&quot;" title="Скопировать">📋</button>
+                </div>
+
+                <h6 class="text-dark">Пример 3: Python скрипт для потокового скачивания</h6>
+                <div class="position-relative mb-3">
+                    <pre class="bg-dark text-light p-3 rounded" style="max-height: 250px; overflow-y: auto; font-size: 0.8rem;"><code>import requests
+
+params = {
+    "format": "jsonl",
+    "method": ["GetGeneralDatas", "InventorySKU"],
+    "min_ms": 5000,
+    "start_date": "2026-11-15 00:00:00",
+    "limit": 50000
+}
+
+# stream=True критически важен для больших файлов, чтобы не забить RAM
+with requests.get("http://192.168.100.174/api/export", params=params, stream=True) as r:
+    r.raise_for_status()
+    with open("export.jsonl", "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+print("✅ Выгрузка завершена!")</code></pre>
+                    <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2 copy-api-btn" data-clipboard="import requests&#10;&#10;params = {&#10;    &quot;format&quot;: &quot;jsonl&quot;,&#10;    &quot;method&quot;: [&quot;GetGeneralDatas&quot;, &quot;InventorySKU&quot;],&#10;    &quot;min_ms&quot;: 5000,&#10;    &quot;start_date&quot;: &quot;2026-11-15 00:00:00&quot;,&#10;    &quot;limit&quot;: 50000&#10;}&#10;&#10;with requests.get(&quot;http://192.168.100.174/api/export&quot;, params=params, stream=True) as r:&#10;    r.raise_for_status()&#10;    with open(&quot;export.jsonl&quot;, &quot;wb&quot;) as f:&#10;        for chunk in r.iter_content(chunk_size=8192):&#10;            f.write(chunk)&#10;&#10;print(&quot;✅ Выгрузка завершена!&quot;)" title="Скопировать">📋</button>
+                </div>
+            </div>
+        </details>
+
+<!--        <div class="alert alert-info mt-4 mb-0">-->
+<!--            <i class="bi bi-info-circle-fill me-2"></i>-->
+<!--            <strong>Совет:</strong> Для типичного сценария анализа сначала используйте запросы <strong>№1</strong> или <strong>№3</strong> (или кнопку "📥 Выгрузить" в интерфейсе), чтобы найти проблемные <code>request_id</code>. Затем подставьте найденный ID в запрос <strong>№2</strong>, чтобы получить полные тела запроса и ответа для детального разбора. Для массовой аналитики используйте эндпоинт <strong>№4</strong>.-->
+<!--        </div>-->
+
+    </div>
+</div>
+
+
+    </div>
+</div>
+
+<!-- Модальное окно деталей события -->
+<div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">📋 Детали события <span id="modal-request-id"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Общая информация -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <strong>ID запроса:</strong>
+                        <div id="modal-request-id-display" class="text-primary fw-bold">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Метод:</strong>
+                        <div id="modal-method" class="text-muted">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>ТСД (device):</strong>
+                        <div id="modal-device" class="text-muted">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Пользователь:</strong>
+                        <div id="modal-user" class="text-muted">-</div>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <strong>Сессия:</strong>
+                        <div id="modal-session" class="text-muted">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Терминал:</strong>
+                        <div id="modal-terminal" class="text-muted">-</div>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Соединение:</strong>
+                        <div id="modal-connection" class="text-muted">-</div>
+                    </div>
+                </div>
+
+                <!-- Тело запроса и ответа -->
+                <div class="row">
+                    <div class="col-md-6">
+                    <h6 class="border-bottom pb-2 d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-info">ЗАПРОС</span>
+                            <span id="modal-req-time" class="text-muted ms-2" style="font-size: 0.85rem;"></span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-light copy-json-btn" data-target="modal-request-body" title="Копировать JSON в буфер обмена">
+                            📋 Копировать
+                        </button>
+                    </h6>
+                        <div id="modal-request-body" class="json-panel">
+                            <pre>Загрузка...</pre>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="border-bottom pb-2 d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-success">ОТВЕТ</span>
+                                <span id="modal-resp-time" class="text-muted ms-2" style="font-size: 0.85rem;"></span>
+                                <span id="modal-processing" class="badge bg-warning text-dark ms-2"></span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-light copy-json-btn" data-target="modal-response-body" title="Копировать JSON в буфер обмена">
+                                📋 Копировать
+                            </button>
+                        </h6>
+                        <div id="modal-response-body" class="json-panel">
+                            <pre>Загрузка...</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно экспорта -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">📥 Выгрузка данных из витрины</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">
+                    Экспортируются данные из таблицы <code>tsd_pairs_mart</code>
+                    с учётом текущих фильтров. Включает тела запроса и ответа.
+                </p>
+
+                <!-- Текущие фильтры -->
+                <div class="mb-3">
+                    <h6 class="text-dark">🔍 Активные фильтры:</h6>
+                    <div id="export-active-filters" class="p-2 bg-light rounded small">
+                        <span class="text-muted">Не выбраны</span>
+                    </div>
+                </div>
+
+                <!-- Выбор формата -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Формат файла:</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="exportFormat" id="fmt-csv" value="csv" checked>
+                        <label class="form-check-label" for="fmt-csv">
+                            <strong>CSV</strong> (разделитель ;, открывается в Excel)
+                            <div class="text-muted small">Рекомендуется для больших объёмов</div>
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="exportFormat" id="fmt-jsonl" value="jsonl">
+                        <label class="form-check-label" for="fmt-jsonl">
+                            <strong>JSONL</strong> (JSON Lines, по объекту на строку)
+                            <div class="text-muted small">Удобен для обработки скриптами</div>
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="exportFormat" id="fmt-json" value="json">
+                        <label class="form-check-label" for="fmt-json">
+                            <strong>JSON Array</strong> (единый JSON-массив)
+                            <div class="text-muted small">Только для небольших выборок (до 10 000)</div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Лимит записей -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Максимум записей:</label>
+                    <select id="export-limit" class="form-select form-select-sm">
+                        <option value="1000">1 000</option>
+                        <option value="5000" selected>5 000</option>
+                        <option value="10000">10 000</option>
+                        <option value="50000">50 000</option>
+                        <option value="100000">100 000</option>
+                        <option value="500000">500 000 (осторожно!)</option>
+                    </select>
+                    <div class="form-text text-muted">
+                        Большие объёмы могут долго скачиваться. CSV и JSONL работают потоково.
+                    </div>
+                </div>
+
+                <!-- Предупреждение о телах -->
+                <div class="alert alert-info small mb-0">
+                    <i class="bi bi-info-circle-fill me-1"></i>
+                    Файл будет содержать поля <code>request_body_json</code> и
+                    <code>response_body_json</code> с полными телами запроса и ответа.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success" onclick="startExport()">
+                    <i class="bi bi-download me-1"></i> Начать выгрузку
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+
+<script>
+let pairsDT, slowDT, orphansDT, topDT, statsDT, errorsDT, errorStatsDT;
+let hourlyChart = null;
+let dateRangePicker = null;
+
+// ===== Даты по умолчанию: последние 24 часа (локальное время) =====
+function getDefaultDateRange() {
+    const now = new Date();
+    const Last24HoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    return {
+        start: formatDateTimeLocal(Last24HoursAgo),
+        end: formatDateTimeLocal(now)
+    };
+}
+
+// ===== Объект фильтров =====
+const defaultRange = getDefaultDateRange();
+let currentFilters = {
+    method: [], device: [], action: [], threshold: 0, status: '',
+    startDate: defaultRange.start, endDate: defaultRange.end,
+    requestId: '', bodySearch: ''
+};
+
+let methodSelect, deviceSelect, actionSelect; // Переменные для экземпляров Tom Select
+
+// ===== Утилиты =====
+function formatDate(d) {
+    if (!d || d === 'N/A') return '-';
+    return String(d).replace('T', ' ').substring(0, 19);
+}
+
+function statusBadge(s) {
+    if (s === 'ok') return '<span class="badge bg-success">OK</span>';
+    if (s === 'no_response') return '<span class="badge bg-warning text-dark">Нет ответа</span>';
+    if (s === 'no_request') return '<span class="badge bg-danger">Нет запроса</span>';
+    return `<span class="badge bg-secondary">${s||'-'}</span>`;
+}
+
+// ===== Форматирование даты строго по локальному времени (без сдвига в UTC) =====
+function formatDateLocal(dateObj) {
+    if (!dateObj) return '';
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+// ===== Форматирование даты и времени строго по локальному времени =====
+function formatDateTimeLocal(dateObj) {
+    if (!dateObj) return '';
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const hours = String(dateObj.getHours()).padStart(2, '0');
+    const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+    const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+function escapeHtml(t) {
+    if (!t) return '';
+    const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'};
+    return String(t).replace(/[&<>"']/g, m => map[m]);
+}
+
+function formatJson(s) {
+    if (!s) return 'Нет данных';
+    try { return JSON.stringify(JSON.parse(s), null, 2); } catch (e) { return s; }
+}
+
+function resetFilters() {
+    document.getElementById('filter-threshold').value = '0';
+    document.getElementById('filter-status').value = '';
+    document.getElementById('filter-request-id').value = '';
+    document.getElementById('filter-body-search').value = '';  // <-- ДОБАВЛЕНО
+
+    const def = getDefaultDateRange();
+    if (dateRangePicker) dateRangePicker.setDate([def.start, def.end]);
+
+    if (methodSelect) methodSelect.clear();
+    if (deviceSelect) deviceSelect.clear();
+    if (actionSelect) actionSelect.clear();
+    currentFilters.action = [];
+    currentFilters.bodySearch = '';  // <-- ДОБАВЛЕНО
+
+    currentFilters = {
+        method: [], device: [], threshold: 0, status: '',
+        startDate: def.start, endDate: def.end, requestId: '', bodySearch: ''
+    };
+    document.getElementById('slow-threshold-label').textContent = '0';
+    loadAll();
+}
+
+
+// ГЛОБАЛЬНАЯ функция — теперь видна и из applyFilters, и из loadFilters
+function refreshActionOptions() {
+    if (!methodSelect || !actionSelect) return;
+
+    let selectedMethods = methodSelect.getValue();
+    if (typeof selectedMethods === 'string') {
+        selectedMethods = selectedMethods ? [selectedMethods] : [];
+    }
+
+    let prev = actionSelect.getValue();
+    prev = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+
+    actionSelect.clear();
+    actionSelect.clearOptions();
+
+    if (!selectedMethods || selectedMethods.length === 0) {
+        actionSelect.settings.placeholder = 'Сначала выберите метод...';
+        actionSelect.updatePlaceholder();
+        return;
+    }
+
+    const union = new Set();
+    selectedMethods.forEach(m => {
+        (actionsByMethod[m] || []).forEach(a => union.add(a));
+    });
+    const actions = Array.from(union).sort();
+
+    if (actions.length > 0) {
+        actions.forEach(a => actionSelect.addOption({ value: a, text: a }));
+        actionSelect.settings.placeholder = `Выберите Action (${actions.length})...`;
+    } else {
+        actionSelect.settings.placeholder = 'Нет Action для выбранных методов';
+    }
+
+    prev.filter(v => union.has(v)).forEach(v => actionSelect.addItem(v, false));
+    actionSelect.updatePlaceholder();
+    actionSelect.refreshOptions(false);
+    console.log("✅ Action обновлён:", actions.length, "значений");
+}
+
+// Функция для сброса состояния кнопки и сообщения о поиске
+function resetSearchUI() {
+    const searchBtn = document.querySelector('button[onclick="applyFilters()"]');
+    const statusMsg = document.getElementById('search-status-msg');
+
+    if (searchBtn) {
+        searchBtn.innerHTML = '🔍';
+        searchBtn.disabled = false;
+        console.log('✅ Кнопка поиска сброшена');
+    }
+    if (statusMsg) {
+        statusMsg.classList.add('d-none');
+        console.log('✅ Сообщение о поиске скрыто');
+    }
+}
+
+
+// ===== Применение фильтров =====
+function applyFilters() {
+    let mVal = methodSelect ? methodSelect.getValue() : [];
+    let dVal = deviceSelect ? deviceSelect.getValue() : [];
+    let aVal = actionSelect ? actionSelect.getValue() : [];
+
+    currentFilters = {
+        method: Array.isArray(mVal) ? mVal : (mVal ? [mVal] : []),
+        device: Array.isArray(dVal) ? dVal : (dVal ? [dVal] : []),
+        action: Array.isArray(aVal) ? aVal : (aVal ? [aVal] : []),
+        threshold: parseFloat(document.getElementById('filter-threshold').value) || 0,
+        status: document.getElementById('filter-status').value,
+        startDate: currentFilters.startDate,
+        endDate: currentFilters.endDate,
+        requestId: document.getElementById('filter-request-id').value,
+        bodySearch: document.getElementById('filter-body-search').value.trim()
+    };
+
+    const searchBtn = document.querySelector('button[onclick="applyFilters()"]');
+    const statusMsg = document.getElementById('search-status-msg');
+    const searchTermDisplay = document.getElementById('search-term-display');
+
+    // Если есть поиск по телу, показываем индикатор загрузки
+    if (currentFilters.bodySearch) {
+        if (searchBtn) {
+            searchBtn.innerHTML = '⏳ Поиск...';
+            searchBtn.disabled = true;
+        }
+        if (statusMsg && searchTermDisplay) {
+            searchTermDisplay.textContent = `"${currentFilters.bodySearch}"`;
+            statusMsg.classList.remove('d-none');
+        }
+    } else {
+        // Если поиска нет, убеждаемся, что UI в нормальном состоянии
+        resetSearchUI();
+    }
+
+    console.log("🔍 Применяем фильтры:", currentFilters);
+    document.getElementById('slow-threshold-label').textContent = currentFilters.threshold;
+
+    loadAll();
+}
+
+
+// ===== Экспорт данных =====
+function startExport() {
+    const format = document.querySelector('input[name="exportFormat"]:checked').value;
+    const limit = document.getElementById('export-limit').value;
+
+    // Собираем параметры из текущих фильтров
+    const params = new URLSearchParams({
+        format: format,
+        limit: limit
+    });
+
+    // Добавляем активные фильтры
+    if (currentFilters.method && currentFilters.method.length > 0) {
+        currentFilters.method.forEach(m => params.append('method', m));
+    }
+    if (currentFilters.device && currentFilters.device.length > 0) {
+        currentFilters.device.forEach(d => params.append('device', d));
+    }
+    if (currentFilters.status) {
+        params.set('pair_status', currentFilters.status);
+    }
+    if (currentFilters.threshold > 0) {
+        params.set('min_ms', Math.round(currentFilters.threshold * 1000));
+    }
+    if (currentFilters.startDate) {
+        params.set('start_date', currentFilters.startDate);
+    }
+    if (currentFilters.endDate) {
+        params.set('end_date', currentFilters.endDate);
+    }
+
+    // Формируем URL
+    const url = `/api/export?${params.toString()}`;
+
+    // Закрываем модалку
+    const modal = bootstrap.Modal.getInstance(document.getElementById('exportModal'));
+    if (modal) modal.hide();
+
+    // Показываем уведомление
+    showExportNotification(`⏳ Начинается выгрузка в формате ${format.toUpperCase()}...`);
+
+    // Создаём невидимую ссылку для скачивания
+    const link = document.createElement('a');
+    link.href = url;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Через 2 секунды показываем подтверждение
+    setTimeout(() => {
+        showExportNotification(`✅ Файл сохранён. Проверьте папку "Загрузки".`);
+    }, 2000);
+}
+
+// Показывает временное уведомление об экспорте
+function showExportNotification(message) {
+    // Удаляем старое уведомление, если есть
+    const old = document.getElementById('export-notification');
+    if (old) old.remove();
+
+    const div = document.createElement('div');
+    div.id = 'export-notification';
+    div.className = 'alert alert-success position-fixed';
+    div.style.cssText = 'top: 80px; right: 20px; z-index: 9999; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+    div.innerHTML = `<i class="bi bi-check-circle-fill me-2"></i>${message}`;
+    document.body.appendChild(div);
+
+    setTimeout(() => {
+        div.style.transition = 'opacity 0.5s';
+        div.style.opacity = '0';
+        setTimeout(() => div.remove(), 500);
+    }, 4000);
+}
+
+// Обновление списка активных фильтров в модалке экспорта
+document.getElementById('exportModal').addEventListener('show.bs.modal', function () {
+    const filtersDiv = document.getElementById('export-active-filters');
+    const parts = [];
+
+    if (currentFilters.startDate && currentFilters.endDate) {
+        parts.push(`📅 Период: ${currentFilters.startDate} — ${currentFilters.endDate}`);
+    }
+    if (currentFilters.method && currentFilters.method.length > 0) {
+        parts.push(`🔧 Методы: ${currentFilters.method.join(', ')}`);
+    }
+    if (currentFilters.device && currentFilters.device.length > 0) {
+        parts.push(`📱 ТСД: ${currentFilters.device.join(', ')}`);
+    }
+    if (currentFilters.status) {
+        const statusNames = {
+            'ok': 'Успешно',
+            'no_response': 'Без ответа',
+            'no_request': 'Без запроса'
+        };
+        parts.push(`📊 Статус: ${statusNames[currentFilters.status] || currentFilters.status}`);
+    }
+    if (currentFilters.threshold > 0) {
+        parts.push(`⏱ Медленнее ${currentFilters.threshold} сек`);
+    }
+    if (currentFilters.requestId) {
+        parts.push(`🆔 ID запроса: ${currentFilters.requestId}`);
+    }
+
+    if (parts.length === 0) {
+        filtersDiv.innerHTML = '<span class="text-muted">Без фильтров (все данные за период)</span>';
+    } else {
+        filtersDiv.innerHTML = parts.map(p => `<div>${p}</div>`).join('');
+    }
+});
+
+
+// ===== Загрузка всех данных =====
+function loadAll() {
+    loadSummary();
+    loadPairs();      // DataTables сам сделает AJAX-запрос
+    loadSlow();
+    loadOrphans();
+    loadTop();
+    loadMinutely();
+    loadStats();
+    loadErrorStats();
+}
+
+// ===== Сводка =====
+async function loadSummary() {
+    try {
+        const r = await fetch('/api/dashboard/summary');
+        const d = await r.json();
+        document.getElementById('stat-total').textContent = d.total_pairs?.toLocaleString() || 0;
+        document.getElementById('stat-ok').textContent = d.ok_pairs?.toLocaleString() || 0;
+        document.getElementById('stat-no-resp').textContent = d.no_response?.toLocaleString() || 0;
+        document.getElementById('stat-no-req').textContent = d.no_request?.toLocaleString() || 0;
+        document.getElementById('stat-avg').textContent = d.avg_ms?.toFixed(1) || '-';
+        document.getElementById('stat-p95').textContent = d.p95_ms?.toFixed(0) || '-';
+    } catch (e) { console.error(e); }
+}
+
+
+// Глобальная карта: method -> [action, ...]
+let actionsByMethod = {};
+
+async function loadFilters() {
+    console.log("🚀 ШАГ 0: loadFilters начала выполнение");
+
+    const elMethod = document.getElementById('filter-method');
+    const elAction = document.getElementById('filter-action');
+    const elDevice = document.getElementById('filter-device');
+
+    if (!elMethod || !elAction || !elDevice) {
+        console.error("❌ Один из select не найден в HTML!", elMethod, elAction, elDevice);
+        return;
+    }
+
+    try {
+        console.log("🚀 ШАГ 1: Загрузка методов, устройств и карты действий...");
+        const [methods, devices, actionsData] = await Promise.all([
+            fetch('/api/methods').then(r => r.json()),
+            fetch('/api/devices').then(r => r.json()),
+            fetch('/api/actions').then(r => r.json())
+        ]);
+
+        // Принимаем ТОЛЬКО объект-маппинг, иначе — пустой объект
+        actionsByMethod = (actionsData && typeof actionsData === 'object' && !Array.isArray(actionsData))
+            ? actionsData : {};
+
+        console.log("✅ Методов:", methods.length,
+                    "| Устройств:", devices.length,
+                    "| Методов с Action в карте:", Object.keys(actionsByMethod).length);
+
+        const importantMethods = new Set([
+            'InventorySKU', 'GetGeneralDatas', 'MovementLocation',
+            'SortByPickingSKU', 'ExpectedReceipt', 'InventoryLocation',
+            'PickingSKU', 'PutTaskQueue'
+        ]);
+
+        // 1. Методы
+        methodSelect = new TomSelect('#filter-method', {
+            plugins: ['remove_button'],
+            maxItems: null,
+            render: {
+                option: function(data, escape) {
+                    const isImportant = importantMethods.has(data.value);
+                    return `<div class="option" style="${isImportant ? 'font-weight:bold; color:#0d6efd;' : ''}">
+                            ${isImportant ? '🔹 ' : ''}${escape(data.text)}</div>`;
+                },
+                item: function(data, escape) {
+                    const isImportant = importantMethods.has(data.value);
+                    return `<div class="item" style="${isImportant ? 'font-weight:bold;' : ''}">${escape(data.text)}</div>`;
+                }
+            }
+        });
+        methods.forEach(m => methodSelect.addOption({value: m, text: m}));
+
+        // 2. Action (пустой до выбора метода)
+        actionSelect = new TomSelect('#filter-action', {
+            plugins: ['remove_button'],
+            maxItems: null,
+            placeholder: 'Сначала выберите метод...',
+            options: []
+        });
+
+        // 3. Устройства
+        deviceSelect = new TomSelect('#filter-device', {
+            plugins: ['remove_button'],
+            maxItems: null
+        });
+        devices.forEach(d => deviceSelect.addOption({value: d, text: d}));
+
+        methodSelect.on('change', refreshActionOptions);
+        methodSelect.on('item_add', refreshActionOptions);
+        methodSelect.on('item_remove', refreshActionOptions);
+
+        console.log("🎉 ШАГ 2: loadFilters завершена успешно!");
+
+    } catch (e) {
+        console.error("💥 КРИТИЧЕСКАЯ ОШИБКА в loadFilters:", e);
+    }
+}
+
+
+function buildFilterParams(extra = {}) {
+    const params = new URLSearchParams(extra);
+
+    if (currentFilters.method && currentFilters.method.length > 0) {
+        currentFilters.method.forEach(m => params.append('method', m));
+    }
+    if (currentFilters.action && currentFilters.action.length > 0) {
+        currentFilters.action.forEach(a => params.append('action', a));
+    }
+    if (currentFilters.device && currentFilters.device.length > 0) {
+        currentFilters.device.forEach(d => params.append('device', d));
+    }
+    if (currentFilters.status) params.set('pair_status', currentFilters.status);
+    if (currentFilters.threshold > 0 && (!currentFilters.status || currentFilters.status === 'ok')) {
+        params.set('min_ms', Math.round(currentFilters.threshold * 1000));
+    }
+    if (currentFilters.requestId) params.set('request_id', currentFilters.requestId);
+    if (currentFilters.startDate) params.set('start_date', currentFilters.startDate);
+    if (currentFilters.endDate) params.set('end_date', currentFilters.endDate);
+    if (currentFilters.bodySearch) params.set('body_search', currentFilters.bodySearch);
+
+    console.log("📡 Итоговый URL запроса:", params.toString()); // <-- ДОБАВЛЕНО для отладки
+    return params;
+}
+
+function buildCommonParams(extra = {}) {
+    const params = new URLSearchParams(extra);
+    if (currentFilters.method && currentFilters.method.length > 0) {
+        currentFilters.method.forEach(m => params.append('method', m));
+    }
+    if (currentFilters.action && currentFilters.action.length > 0) {
+        currentFilters.action.forEach(a => params.append('action', a));
+    }
+    if (currentFilters.device && currentFilters.device.length > 0) {
+        currentFilters.device.forEach(d => params.append('device', d));
+    }
+    if (currentFilters.startDate) params.set('start_date', currentFilters.startDate);
+    if (currentFilters.endDate) params.set('end_date', currentFilters.endDate);
+    if (currentFilters.bodySearch) params.set('body_search', currentFilters.bodySearch);  // <-- ДОБАВЛЕНО
+    return params;
+}
+
+
+
+// ===== Инициализация DataTables с server-side пагинацией =====
+// ===== Инициализация DataTables с server-side пагинацией =====
+function initPairsTable() {
+    if (pairsDT) pairsDT.destroy();
+
+    pairsDT = $('#pairsTable').DataTable({
+        processing: true,
+        serverSide: true,
+        ajax: function(data, callback) {
+            const params = buildFilterParams({
+                start: data.start, length: data.length, search: data.search.value || '',
+                order_column: data.order[0]?.column ?? 0,
+                order_dir: data.order[0]?.dir || 'desc'
+            });
+
+            fetch(`/api/pairs/server?${params.toString()}`)
+                .then(r => r.json())
+                .then(json => {
+                    // ✅ ГАРАНТИРОВАННЫЙ СБРОС UI
+                    setTimeout(() => resetSearchUI(), 100);
+
+                    callback({
+                        draw: data.draw, recordsTotal: json.recordsTotal, recordsFiltered: json.recordsFiltered,
+                        data: json.data.map(r => [
+                            formatDate(r.request_ts),
+                            formatDate(r.response_ts),
+                            r.method,
+                            r.action || '-',
+                            r.device,
+                            r.processing_ms ?? '-',
+                            r.request_id
+                        ])
+                    });
+                })
+                .catch(err => {
+                    // ✅ СБРОС UI ПРИ ОШИБКЕ
+                    setTimeout(() => resetSearchUI(), 100);
+                    console.error('Ошибка загрузки пар:', err);
+                    callback({ draw: data.draw, recordsTotal: 0, recordsFiltered: 0, data: [] });
+                });
+        },
+        columns: [
+            { title: 'Время запроса' },
+            { title: 'Время ответа' },
+            { title: 'Метод' },
+            { title: 'Action' },
+            { title: 'ТСД' },
+            { title: 'Длит. (мс)' },
+            { title: 'ID запроса' }
+        ],
+        order: [[0, 'desc']],
+        language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json" },
+        pageLength: 25, lengthMenu: [25, 50, 100, 250, 500], stateSave: false
+    });
+}
+
+function loadPairs() {
+    if (pairsDT) {
+        pairsDT.ajax.reload();
+    } else {
+        initPairsTable();
+    }
+}
+
+// ===== Вспомогательная функция для безопасного экранирования в HTML-атрибутах =====
+function escapeAttr(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '&#10;')
+        .replace(/\r/g, '&#13;');
+}
+
+// ===== Ошибки ТСД (Server-side пагинация) =====
+function initErrorsTable() {
+    if (errorsDT) {
+        errorsDT.destroy();
+        errorsDT = null;
+    }
+
+    console.log('🚀 Инициализация таблицы ошибок...');
+
+    errorsDT = $('#errorsTable').DataTable({
+        processing: true,
+        serverSide: true,
+        deferRender: true,   // Критично для скрытых вкладок
+        autoWidth: false,    // Критично для скрытых вкладок
+        ajax: function(data, callback) {
+            // ИСПОЛЬЗУЕМ ПРОВЕРЕННУЮ ФУНКЦИЮ, которая правильно работает с массивами Tom Select
+            const params = buildFilterParams({
+                start: data.start,
+                length: data.length,
+                search: data.search.value || '',
+                order_column: data.order[0]?.column ?? 0,
+                order_dir: data.order[0]?.dir || 'desc'
+            });
+
+            const url = `/api/dashboard/errors/server?${params.toString()}`;
+            console.log('📡 Запрос к API ошибок:', url);
+
+            fetch(url)
+                .then(r => {
+                    if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+                    return r.json();
+                })
+                .then(json => {
+                    console.log('✅ Получено записей об ошибках:', json.recordsTotal);
+                    callback({
+                        draw: data.draw,
+                        recordsTotal: json.recordsTotal,
+                        recordsFiltered: json.recordsFiltered,
+                        data: json.data.map(r => [
+                            formatDate(r.event_ts),
+                            r.method,
+                            r.device,
+                            r.terminal || '-',
+                            r.user_name || '-',
+                            // 6-й элемент (индекс 5) - это ОБЪЕКТ для умной отрисовки и поиска
+                            {
+                                display: `<div class="text-truncate" style="max-width: 300px;" title="${escapeAttr(r.comment_raw || '')}">${escapeHtml((r.comment_raw || '').substring(0, 100))}...</div>`,
+                                filter: r.comment_raw || ''
+                            }
+                        ])
+                    });
+                })
+                .catch(err => {
+                    console.error('❌ Ошибка загрузки ошибок:', err);
+                    callback({ draw: data.draw, recordsTotal: 0, recordsFiltered: 0, data: [] });
+                });
+        },
+        // РОВНО 6 колонок. Render встроен прямо сюда, columnDefs не нужен.
+        columns: [
+            { title: 'Время' },
+            { title: 'Метод' },
+            { title: 'ТСД' },
+            { title: 'Терминал' },
+            { title: 'Пользователь' },
+            {
+                title: 'Текст ошибки',
+                render: function(data, type, row) {
+                    if (type === 'display') {
+                        return data.display;
+                    }
+                    return data.filter || ''; // Для поиска и сортировки
+                }
+            }
+        ],
+        order: [[0, 'desc']],
+        language: {
+            url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json",
+            emptyTable: "Нет данных об ошибках за выбранный период",
+            info: "Показано _START_ - _END_ из _TOTAL_ ошибок",
+            infoEmpty: "0 ошибок",
+            infoFiltered: "(отфильтровано из _MAX_)"
+        },
+        pageLength: 25,
+        lengthMenu: [25, 50, 100, 250]
+    });
+}
+
+
+function loadErrors() {
+    if (errorsDT) {
+        errorsDT.ajax.reload();
+    } else {
+        initErrorsTable();
+    }
+}
+
+// ===== Универсальный обработчик для кнопки "Полный текст" =====
+
+$(document).on('click', '.show-error-btn', function(e) {
+    e.stopPropagation(); // Останавливаем всплытие, чтобы не сработал клик по строке
+    const encodedText = this.getAttribute('data-error-text');
+    const txt = document.createElement('textarea');
+    txt.innerHTML = encodedText;
+    showErrorDetails(txt.value);
+});
+
+
+// ===== Клик по строке таблицы пар — открывает детали =====
+$(document).on('click', '#pairsTable tbody tr', function(e) {
+    // Игнорируем клики по кнопкам и ссылкам
+    if ($(e.target).closest('.btn, a').length) {
+        return;
+    }
+
+    // Получаем данные строки из DataTables
+    const rowData = pairsDT.row(this).data();
+    if (rowData && rowData[6]) { // <-- ИЗМЕНЕНО: индекс 6 (ID запроса теперь в конце)
+        showDetails(rowData[6]);
+    }
+});
+
+// ===== Клик по строке таблицы медленных запросов =====
+$(document).on('click', '#slowTable tbody tr', function(e) {
+    if ($(e.target).closest('.btn, a').length) {
+        return;
+    }
+
+    const rowData = slowDT.row(this).data();
+    if (rowData && rowData[7]) { // <-- ИЗМЕНЕНО: индекс 7 (ID запроса теперь в конце)
+        showDetails(rowData[7]);
+    }
+});
+
+// ===== Клик по строке таблицы осиротевших =====
+$(document).on('click', '#orphansTable tbody tr', function(e) {
+    if ($(e.target).closest('.btn, a').length) {
+        return;
+    }
+
+    const rowData = orphansDT.row(this).data();
+    if (rowData && rowData[0]) { // <-- ОСТАВЛЯЕМ 0, так как ID всё ещё первый
+        showDetails(rowData[0]);
+    }
+});
+
+// ===== Безопасный обработчик клика для кнопки "Полный текст" (и для клика по строке) =====
+function showErrorDetails(errorText) {
+    document.getElementById('modal-request-id').textContent = 'Ошибка ТСД';
+    document.getElementById('modal-request-id-display').textContent = 'Детали ошибки';
+    document.getElementById('modal-method').textContent = '-';
+    document.getElementById('modal-device').textContent = '-';
+    document.getElementById('modal-user').textContent = '-';
+    document.getElementById('modal-session').textContent = '-';
+    document.getElementById('modal-terminal').textContent = '-';
+    document.getElementById('modal-connection').textContent = '-';
+    document.getElementById('modal-req-time').textContent = '';
+    document.getElementById('modal-resp-time').textContent = '';
+    document.getElementById('modal-processing').textContent = '';
+
+    document.getElementById('modal-request-body').innerHTML = `<pre class="text-danger">${escapeHtml(errorText)}</pre>`;
+    document.getElementById('modal-response-body').innerHTML = '<pre class="text-muted">Отсутствует (событие ошибки)</pre>';
+
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    modal.show();
+}
+
+// ===== Клик по строке таблицы ошибок — открывает детали =====
+$(document).on('click', '#errorsTable tbody tr', function(e) {
+    if ($(e.target).closest('.btn, a').length) {
+        return;
+    }
+
+    const rowData = errorsDT.row(this).data();
+    if (rowData && rowData[5]) {
+        // rowData[5] - это объект { display: '...', filter: '...' }
+        const rawErrorText = rowData[5].filter;
+        if (rawErrorText) {
+            showErrorDetails(rawErrorText);
+        }
+    }
+});
+
+// ===== Медленные запросы =====
+async function loadSlow() {
+    document.getElementById('slow-body').innerHTML = '<tr><td colspan="8" class="loading">Загрузка...</td></tr>';
+    try {
+        const params = buildFilterParams({ threshold_ms: Math.max(1, Math.round(currentFilters.threshold * 1000)), limit: 500 });
+        const data = await fetch(`/api/dashboard/slow-requests?${params.toString()}`).then(r=>r.json());
+        if (!Array.isArray(data)) {
+            document.getElementById('slow-body').innerHTML = `<tr><td colspan="8" class="text-danger">Ошибка формата данных</td></tr>`;
+            return;
+        }
+        if (slowDT) slowDT.destroy();
+        slowDT = $('#slowTable').DataTable({
+            data: data.map(r => [
+                formatDate(r.request_ts),      // 0: Время запроса
+                formatDate(r.response_ts),     // 1: Время ответа
+                r.method,                      // 2: Метод
+                r.action || '-',               // 3: Action
+                r.device,                      // 4: ТСД
+                r.terminal || '-',             // 5: Терминал
+                r.processing_ms,               // 6: Длит. (мс)
+                r.request_id                   // 7: ID запроса
+            ]),
+            order: [[6, 'desc']], // Сортировка по умолчанию: Длит. (мс) по убыванию (теперь индекс 6)
+            language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json" },
+            pageLength: 50
+        });
+    } catch (e) {
+        document.getElementById('slow-body').innerHTML = `<tr><td colspan="8" class="text-danger">Ошибка: ${e.message}</td></tr>`;
+    }
+}
+
+// ===== Осиротевшие =====
+async function loadOrphans() {
+    document.getElementById('orphans-body').innerHTML = '<tr><td colspan="7" class="loading">Загрузка...</td></tr>';
+    try {
+        const params = buildFilterParams({ limit: 500 });
+        const data = await fetch(`/api/dashboard/orphans?${params.toString()}`).then(r=>r.json());
+        if (orphansDT) orphansDT.destroy();
+        orphansDT = $('#orphansTable').DataTable({
+            data: data.map(r => [
+                r.request_id, r.method, r.device, r.terminal || '-',
+                statusBadge(r.pair_status), formatDate(r.event_ts), r.session_id || '-' // Кнопка удалена
+            ]),
+            order: [[5, 'desc']],
+            language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json" },
+            pageLength: 50
+            // columnDefs для 8-й колонки удален
+        });
+    } catch (e) {
+        document.getElementById('orphans-body').innerHTML = `<tr><td colspan="7" class="text-danger">Ошибка: ${e.message}</td></tr>`;
+    }
+}
+
+// ===== График (поминутно, по умолчанию 24 часа) =====
+async function loadMinutely() {
+    try {
+        const params = new URLSearchParams({ minutes: '1440' });
+        if (currentFilters.method) params.set('method', currentFilters.method);
+        if (currentFilters.device) params.set('device', currentFilters.device);
+        if (currentFilters.startDate) params.set('start_date', currentFilters.startDate);
+        if (currentFilters.endDate) params.set('end_date', currentFilters.endDate);
+
+        const data = await fetch(`/api/dashboard/minutely?${params.toString()}`).then(r=>r.json());
+        const byMinute = {};
+        data.forEach(r => {
+            const dateObj = new Date(r.minute_ts);
+            const timeLabel = dateObj.toLocaleString('ru-RU', {
+                month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+            });
+            if (!byMinute[timeLabel]) byMinute[timeLabel] = { avg: [], p95: [], max: [], messages: 0 };
+            if (r.avg_ms) byMinute[timeLabel].avg.push(r.avg_ms);
+            if (r.p95_ms) byMinute[timeLabel].p95.push(r.p95_ms);
+            if (r.max_ms) byMinute[timeLabel].max.push(r.max_ms);
+            byMinute[timeLabel].messages += r.messages;
+        });
+        const labels = Object.keys(byMinute).sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+        const avgData = labels.map(h => byMinute[h].avg.reduce((a,b)=>a+b,0) / byMinute[h].avg.length);
+        const p95Data = labels.map(h => Math.max(...byMinute[h].p95));
+        const maxData = labels.map(h => Math.max(...byMinute[h].max));
+
+        if (hourlyChart) hourlyChart.destroy();
+        hourlyChart = new Chart(document.getElementById('hourlyChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Среднее (мс)', data: avgData, borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', fill: true, tension: 0.3 },
+                    { label: 'P95 (мс)', data: p95Data, borderColor: '#ffc107', borderDash: [5, 5], fill: false, tension: 0.3 },
+                    { label: 'Макс (мс)', data: maxData, borderColor: '#dc3545', fill: false, tension: 0.3 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Время (мс)' } },
+                    x: { title: { display: true, text: 'Время' }, ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 24 } }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed.y !== null) label += context.parsed.y.toFixed(1) + ' мс';
+                                const msgCount = byMinute[context.label]?.messages || 0;
+                                return [label, `Всего запросов: ${msgCount}`];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (e) { console.error('Ошибка графика:', e); }
+}
+
+// ===== Статистика методов (с учётом фильтра дат) =====
+async function loadStats() {
+    document.getElementById('stats-body').innerHTML = '<tr><td colspan="9" class="loading">Загрузка...</td></tr>';
+    try {
+        const params = buildCommonParams();
+        const response = await fetch(`/api/stats/methods?${params.toString()}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (!Array.isArray(data)) {
+            console.error('Ожидался массив, получено:', data);
+            document.getElementById('stats-body').innerHTML = `<tr><td colspan="9" class="text-danger">Ошибка формата данных от API</td></tr>`;
+            return;
+        }
+
+        if (statsDT) statsDT.destroy();
+        statsDT = $('#statsTable').DataTable({
+            data: data.map(r => [
+                r.method, r.paired, r.no_response, r.no_request,
+                r.avg_ms, r.p50_ms, r.p95_ms, r.p99_ms, r.max_ms
+            ]),
+            order: [[8, 'desc']],
+            language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json" },
+            pageLength: 50
+        });
+    } catch (e) {
+        console.error('Ошибка loadStats:', e);
+        document.getElementById('stats-body').innerHTML = `<tr><td colspan="9" class="text-danger">Ошибка: ${e.message}</td></tr>`;
+    }
+}
+
+
+// ===== Статистика ошибок по ТСД =====
+async function loadErrorStats() {
+    document.getElementById('error-stats-body').innerHTML = '<tr><td colspan="8" class="loading">Загрузка...</td></tr>';
+    try {
+        const params = buildCommonParams();
+        const response = await fetch(`/api/stats/errors-by-device?${params.toString()}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (!Array.isArray(data)) {
+            console.error('Ожидался массив, получено:', data);
+            document.getElementById('error-stats-body').innerHTML = `<tr><td colspan="8" class="text-danger">Ошибка формата данных</td></tr>`;
+            return;
+        }
+
+        if (errorStatsDT) errorStatsDT.destroy();
+        errorStatsDT = $('#errorStatsTable').DataTable({
+            data: data.map(r => [
+                r.device || '-',
+                r.method || '-',
+                `<span class="badge bg-danger">${r.error_count}</span>`,
+                r.unique_terminals || 0,
+                r.unique_users || 0,
+                formatDate(r.first_error),
+                formatDate(r.last_error),
+                `<div class="text-truncate" style="max-width: 300px;" title="${escapeAttr(r.top_error_sample || '')}">${escapeHtml((r.top_error_sample || '').substring(0, 100))}...</div>`
+            ]),
+            order: [[2, 'desc']],
+            language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json" },
+            pageLength: 50,
+            lengthMenu: [25, 50, 100, 250]
+        });
+    } catch (e) {
+        console.error('Ошибка loadErrorStats:', e);
+        document.getElementById('error-stats-body').innerHTML = `<tr><td colspan="8" class="text-danger">Ошибка: ${e.message}</td></tr>`;
+    }
+}
+
+
+// ===== Топ по ТСД (с учётом фильтра дат) =====
+async function loadTop() {
+    document.getElementById('top-body').innerHTML = '<tr><td colspan="6" class="loading">Загрузка...</td></tr>';
+    try {
+        const params = buildCommonParams({ limit: 100 });
+        const response = await fetch(`/api/dashboard/slow-methods?${params.toString()}`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (!Array.isArray(data)) {
+            console.error('Ожидался массив, получено:', data);
+            document.getElementById('top-body').innerHTML = `<tr><td colspan="6" class="text-danger">Ошибка формата данных</td></tr>`;
+            return;
+        }
+
+        if (topDT) topDT.destroy();
+        topDT = $('#topTable').DataTable({
+            data: data.map(r => [r.device, r.method, r.paired, r.avg_ms, r.max_ms, r.total_ms]),
+            order: [[5, 'desc']],
+            language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/ru.json" },
+            pageLength: 50
+        });
+    } catch (e) {
+        console.error('Ошибка loadTop:', e);
+        document.getElementById('top-body').innerHTML = `<tr><td colspan="6" class="text-danger">Ошибка: ${e.message}</td></tr>`;
+    }
+}
+
+// ===== Просмотр деталей =====
+async function showDetails(requestId) {
+    document.getElementById('modal-request-id').textContent = requestId;
+    document.getElementById('modal-request-id-display').textContent = requestId;
+    ['modal-method','modal-device','modal-user','modal-session','modal-terminal','modal-connection'].forEach(id => document.getElementById(id).textContent = '-');
+    ['modal-req-time','modal-resp-time','modal-processing'].forEach(id => document.getElementById(id).textContent = '');
+    document.getElementById('modal-request-body').innerHTML = '<pre>Загрузка...</pre>';
+    document.getElementById('modal-response-body').innerHTML = '<pre>Загрузка...</pre>';
+
+    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
+    modal.show();
+
+    try {
+        const d = await fetch(`/api/events/${requestId}`).then(r=>r.json());
+        const evt = d.request || d.response;
+        if (evt) {
+            document.getElementById('modal-method').textContent = evt.method || '-';
+            document.getElementById('modal-device').textContent = evt.device || '-';
+            document.getElementById('modal-user').textContent = evt.user_name || '-';
+            document.getElementById('modal-session').textContent = evt.session_id || '-';
+            document.getElementById('modal-terminal').textContent = evt.terminal || '-';
+            document.getElementById('modal-connection').textContent = evt.connection_id || '-';
+        }
+        if (d.request) {
+            document.getElementById('modal-req-time').textContent = formatDate(d.request.event_ts);
+            document.getElementById('modal-request-body').innerHTML = `<pre>${escapeHtml(formatJson(d.request.body_json))}</pre>`;
+        } else {
+            document.getElementById('modal-request-body').innerHTML = '<pre class="text-muted">Запрос не найден</pre>';
+        }
+        if (d.response) {
+            document.getElementById('modal-resp-time').textContent = formatDate(d.response.event_ts);
+            document.getElementById('modal-processing').textContent = d.response.processing_ms ? `${d.response.processing_ms} мс` : '';
+            document.getElementById('modal-response-body').innerHTML = `<pre>${escapeHtml(formatJson(d.response.body_json))}</pre>`;
+        } else {
+            document.getElementById('modal-response-body').innerHTML = '<pre class="text-muted">Ответ не найден</pre>';
+        }
+    } catch (e) {
+        console.error(e);
+        document.getElementById('modal-request-body').innerHTML = `<pre class="text-danger">Ошибка: ${e.message}</pre>`;
+    }
+}
+
+
+
+// ===== Универсальная функция копирования (максимально надёжная) =====
+function copyToClipboard(text) {
+    return new Promise((resolve) => {
+        // Способ 1: Современный Clipboard API (работает только в HTTPS или localhost)
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text)
+                .then(() => resolve(true))
+                .catch(() => resolve(false));
+            return;
+        }
+
+        // Способ 2: Fallback через textarea (работает в HTTP по IP)
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+
+        // Стили, чтобы элемент был "видим" для мобильных браузеров, но не мешал пользователю
+        textArea.style.position = "fixed";
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.width = "2em";
+        textArea.style.height = "2em";
+        textArea.style.padding = "0";
+        textArea.style.border = "none";
+        textArea.style.outline = "none";
+        textArea.style.boxShadow = "none";
+        textArea.style.background = "transparent";
+        textArea.style.opacity = "0";
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            const successful = document.execCommand('copy');
+            resolve(successful);
+        } catch (err) {
+            console.error('Fallback copy failed:', err);
+            resolve(false);
+        }
+
+        document.body.removeChild(textArea);
+    });
+}
+
+// ===== ЖЕЛЕЗОБЕТОННЫЙ ОБРАБОТЧИК КОПИРОВАНИЯ =====
+$(document).ready(function() {
+    console.log('✅ jQuery готов, вешаем обработчик на .copy-json-btn');
+
+$(document).on('click', '.copy-json-btn', async function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const targetId = $(this).attr('data-target');
+    const container = document.getElementById(targetId);
+    if (!container) return;
+
+    const preElement = container.querySelector('pre');
+    const textToCopy = preElement ? preElement.innerText : container.innerText;
+
+    let copySuccess = false;
+
+    // 1. Пробуем современный API (сработает только если когда-нибудь перейдёте на HTTPS)
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(textToCopy);
+            copySuccess = true;
+        } catch (err) {
+            console.warn('Clipboard API failed:', err);
+        }
+    }
+
+    // 2. Fallback: Выделяем видимый текст и пробуем execCommand
+    if (!copySuccess) {
+        const range = document.createRange();
+        range.selectNodeContents(preElement); // Выделяем именно видимый блок кода
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        try {
+            // Небольшая задержка, чтобы браузер успел отрисовать выделение
+            await new Promise(resolve => setTimeout(resolve, 50));
+            copySuccess = document.execCommand('copy');
+        } catch (err) {
+            console.error('execCommand error:', err);
+        }
+
+        // Снимаем выделение через 1.5 секунды, чтобы не мешать пользователю
+        setTimeout(() => selection.removeAllRanges(), 1500);
+    }
+
+    // 3. Обновляем интерфейс
+    const btn = $(this);
+    if (copySuccess) {
+        const originalHTML = btn.html();
+        btn.html('✅ Скопировано!').removeClass('btn-outline-light').addClass('btn-success');
+        setTimeout(() => {
+            btn.html(originalHTML).removeClass('btn-success').addClass('btn-outline-light');
+        }, 2000);
+    } else {
+        // Если браузер всё равно заблокировал, текст УЖЕ выделен. Просто даём инструкцию.
+        alert('⚠️ Браузер заблокировал фоновое копирование (требуется HTTPS).\n\nНо не волнуйтесь: текст уже выделен!\nПросто нажмите Ctrl + C (или Cmd + C на Mac), чтобы скопировать его.');
+    }
+});
+});
+
+
+// ===== Обработчик копирования для вкладки "Примеры API" =====
+$(document).on('click', '.copy-api-btn', async function(e) {
+    e.preventDefault();
+    const btn = $(this);
+    const textToCopy = btn.attr('data-clipboard');
+
+    if (!textToCopy) return;
+
+    let copySuccess = false;
+
+    // 1. Пробуем современный API
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(textToCopy);
+            copySuccess = true;
+        } catch (err) {
+            console.warn('Clipboard API failed:', err);
+        }
+    }
+
+    // 2. Fallback через textarea
+    if (!copySuccess) {
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            copySuccess = document.execCommand('copy');
+        } catch (err) {
+            console.error('execCommand error:', err);
+        }
+        document.body.removeChild(textArea);
+    }
+
+    // 3. Визуальная обратная связь
+    if (copySuccess) {
+        const originalHTML = btn.html();
+        btn.html('✅ Скопировано!').removeClass('btn-outline-light').addClass('btn-success');
+        setTimeout(() => {
+            btn.html(originalHTML).removeClass('btn-success').addClass('btn-outline-light');
+        }, 2000);
+    } else {
+        alert('Не удалось скопировать автоматически. Пожалуйста, выделите текст вручную и нажмите Ctrl+C.');
+    }
+});
+
+
+async function checkHealth() {
+    try {
+        // Добавляем таймаут 5 секунд, чтобы запрос не висел бесконечно
+        const res = await fetch('/api/health', { signal: AbortSignal.timeout(5000) });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+
+        document.getElementById('stat-events').textContent =
+            (data.events_total || 0).toLocaleString('ru-RU');
+
+        const fmt = (ts) => ts ? ts.substring(0, 16).replace('T', ' ') : '—';
+        document.getElementById('stat-last-import').textContent = fmt(data.last_import_at);
+        document.getElementById('stat-max-event').textContent = fmt(data.max_event_ts);
+
+        const statusLabel = document.querySelector('#db-status .text-white.fw-bold');
+        const icon = statusLabel.querySelector('i');
+
+        if (data.max_event_ts) {
+            const maxDate = new Date(data.max_event_ts);
+            const now = new Date();
+            const hoursDiff = (now - maxDate) / (1000 * 60 * 60);
+
+            icon.className = 'bi me-1';
+            statusLabel.classList.remove('text-warning', 'text-danger');
+
+            if (hoursDiff > 24) {
+                icon.classList.add('bi-database-fill-x', 'text-danger');
+                statusLabel.classList.add('text-danger');
+            } else if (hoursDiff > 2) {
+                icon.classList.add('bi-database-fill-exclamation', 'text-warning');
+                statusLabel.classList.add('text-warning');
+            } else {
+                icon.classList.add('bi-database-fill-check', 'text-success');
+            }
+        }
+    } catch (e) {
+        // ВОТ ЗДЕСЬ МАГИЯ: вместо красной ошибки показываем желтое предупреждение
+        console.warn('⚠️ Health check failed (вероятно, идёт импорт):', e.message);
+
+        const statusDiv = document.getElementById('db-status');
+        statusDiv.innerHTML = `
+            <span class="text-warning fw-bold">
+                <i class="bi bi-hourglass-split me-1"></i>
+                Идёт импорт и обновление данных... <small class="text-white-50">(страница обновится автоматически)</small>
+            </span>
+        `;
+    }
+}
+
+document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tabEl => {
+    tabEl.addEventListener('shown.bs.tab', function (event) {
+        const targetId = event.target.getAttribute('data-bs-target');
+
+        if (targetId === '#tab-errors') {
+            // Небольшая задержка, чтобы вкладка стала видимой
+            setTimeout(() => {
+                if (!errorsDT) {
+                    initErrorsTable();
+                } else {
+                    errorsDT.ajax.reload();
+                }
+                // Корректировка колонок после отрисовки
+                setTimeout(() => {
+                    if (errorsDT) errorsDT.columns.adjust();
+                }, 150);
+            }, 100);
+        }
+
+        // Корректировка для других таблиц
+        setTimeout(() => {
+            if (targetId === '#tab-pairs' && pairsDT) pairsDT.columns.adjust();
+            if (targetId === '#tab-slow' && slowDT) slowDT.columns.adjust();
+            if (targetId === '#tab-orphans' && orphansDT) orphansDT.columns.adjust();
+            if (targetId === '#tab-top' && topDT) topDT.columns.adjust();
+            if (targetId === '#tab-stats' && statsDT) statsDT.columns.adjust();
+            if (targetId === '#tab-error-stats' && errorStatsDT) errorStatsDT.columns.adjust();
+        }, 100);
+    });
+});
+
+// Автообновление статуса каждые 60 секунд
+setInterval(checkHealth, 60000);
+
+// ===== Инициализация =====
+document.addEventListener('DOMContentLoaded', () => {
+    console.log("🟢 DOM полностью загружен, начинаем инициализацию");
+    checkHealth();
+    loadFilters();
+    loadAll();
+    // Инициализация всплывающих подсказок (Tooltips) Bootstrap
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+
+// Инициализация диапазонного селектора даты и времени (flatpickr)
+const def = getDefaultDateRange();
+dateRangePicker = flatpickr("#filter-date-range", {
+    mode: "range",
+    enableTime: true,
+    enableSeconds: true,
+    time_24hr: true,
+    dateFormat: "Y-m-d H:i:S",
+    locale: "ru",
+    defaultDate: [def.start, def.end],
+    allowInput: true,
+
+    // Автоматически применяем фильтры и корректируем время при выборе даты
+    onClose: function(selectedDates) {
+        if (selectedDates.length === 2) {
+            // Клонируем объекты дат
+            const startDate = new Date(selectedDates[0]);
+            const endDate = new Date(selectedDates[1]);
+
+            // Проверяем, было ли время введено пользователем или это дефолтное значение
+            // Если часы/минуты/секунды равны 00:00:00 для начала и 00:00:00 для конца —
+            // значит пользователь выбрал только дату, применяем автоматическую корректировку
+            const isStartDateMidnight = (startDate.getHours() === 0 &&
+                                          startDate.getMinutes() === 0 &&
+                                          startDate.getSeconds() === 0);
+            const isEndDateMidnight = (endDate.getHours() === 0 &&
+                                        endDate.getMinutes() === 0 &&
+                                        endDate.getSeconds() === 0);
+
+            // Если пользователь выбрал только дату (время 00:00:00), применяем автоматическую корректировку
+            if (isStartDateMidnight) {
+                startDate.setHours(0, 0, 0, 0);
+            }
+
+            if (isEndDateMidnight) {
+                endDate.setHours(23, 59, 59, 999);
+            }
+
+            // Сохраняем в фильтры
+            currentFilters.startDate = formatDateTimeLocal(startDate);
+            currentFilters.endDate = formatDateTimeLocal(endDate);
+
+            // Обновляем отображение в инпуте
+            dateRangePicker.setDate([startDate, endDate]);
+
+            // Применяем фильтры
+            setTimeout(() => {
+                applyFilters();
+            }, 300);
+        }
+    }
+});
+
+
+    // Дополнительно: применяем фильтры при ручном вводе и потере фокуса
+    document.getElementById('filter-date-range').addEventListener('blur', function() {
+        // Парсим введенное значение и обновляем фильтры
+        const value = this.value;
+        if (value.includes(' — ')) {
+            const [start, end] = value.split(' — ');
+            currentFilters.startDate = start.trim();
+            currentFilters.endDate = end.trim();
+            setTimeout(() => {
+                applyFilters();
+            }, 300);
+        }
+    });
+
+
+    loadAll();
+    loadStats();
+});
+</script>
+
+
+</body>
+</html>
