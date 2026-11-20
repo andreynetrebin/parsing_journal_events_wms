@@ -15,6 +15,40 @@
     <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
     <style>
+
+        /* Подсветка выбранной строки в таблице */
+        .table tbody tr.selected {
+            background-color: #fff3cd !important; /* Желтый цвет Bootstrap */
+            font-weight: 500;
+        }
+
+        .table tbody tr.selected:hover td {
+            background-color: #ffe69c !important; /* Темнее при наведении */
+        }
+
+        /* Анимация появления панели деталей */
+        #detail-panel {
+            transition: all 0.3s ease;
+        }
+
+        /* Скроллбар для панели деталей */
+        #detail-panel .p-3::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #detail-panel .p-3::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        #detail-panel .p-3::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        #detail-panel .p-3::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
         body { background-color: #f8f9fa; font-size: 0.9rem; }
         .card { box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: none; margin-bottom: 1rem; }
         .stat-card { text-align: center; padding: 1rem; }
@@ -176,38 +210,127 @@
 
     <div class="tab-content">
         <!-- Таблица событий -->
+        <!-- Таблица событий -->
         <div class="tab-pane fade show active" id="tab-pairs">
             <div class="card p-3">
                 <div class="d-flex justify-content-between mb-2">
                     <h6 class="mb-0">Пары Запрос-Ответ <span id="pairs-count" class="badge bg-secondary"></span></h6>
-                    <button class="btn btn-sm btn-outline-primary" onclick="applyFilters()">🔄 Обновить</button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="loadPairs()">🔄 Обновить</button>
                 </div>
 
-                <!-- НОВОЕ: Сообщение о процессе поиска -->
+                <!-- Сообщение о процессе поиска -->
                 <div id="search-status-msg" class="alert alert-info py-2 mb-2 d-none" role="alert">
                     <i class="bi bi-hourglass-split me-2"></i>
                     Выполняется поиск по телу запроса: <strong id="search-term-display"></strong>. Пожалуйста, подождите...
                 </div>
 
-                <div class="table-responsive">
-                    <table id="pairsTable" class="table table-striped table-hover table-sm" style="width:100%">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Время запроса</th>
-                                <th>Время ответа</th>
-                                <th>Метод</th>
-                                <th>Action</th>
-                                <th>ТСД</th>
-                                <th>Длит. (мс)</th>
-                                <th>ID запроса</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pairs-body"><tr><td colspan="7" class="loading">Загрузка...</td></tr></tbody>
-                    </table>
+                <!-- Контейнер с таблицей и панелью деталей -->
+                <div class="row g-0" style="min-height: 500px;">
+                    <!-- Левая часть: таблица -->
+                    <div class="col-md-7" id="table-container">
+                        <div class="table-responsive">
+                            <table id="pairsTable" class="table table-striped table-hover table-sm" style="width:100%">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Время запроса</th>
+                                        <th>Время ответа</th>
+                                        <th>Метод</th>
+                                        <th>Action</th>
+                                        <th>ТСД</th>
+                                        <th>Длит. (мс)</th>
+                                        <th>ID запроса</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="pairs-body"><tr><td colspan="7" class="loading">Загрузка...</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Правая часть: панель деталей -->
+                    <div class="col-md-5 border-start" id="detail-panel" style="display: none; background: #f8f9fa;">
+                        <div class="p-3" style="height: 100%; overflow-y: auto;">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="mb-0">📋 Детали события</h6>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="closeDetailPanel()">
+                                    <i class="bi bi-x-lg"></i> Закрыть
+                                </button>
+                            </div>
+
+                            <!-- Общая информация -->
+                            <div class="mb-3">
+                                <div class="row g-2 small">
+                                    <div class="col-6">
+                                        <strong class="text-muted">ID запроса:</strong>
+                                        <div id="panel-request-id" class="text-primary fw-bold">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong class="text-muted">Метод:</strong>
+                                        <div id="panel-method">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong class="text-muted">ТСД (device):</strong>
+                                        <div id="panel-device">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong class="text-muted">Пользователь:</strong>
+                                        <div id="panel-user">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong class="text-muted">Сессия:</strong>
+                                        <div id="panel-session">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong class="text-muted">Терминал:</strong>
+                                        <div id="panel-terminal">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong class="text-muted">Соединение:</strong>
+                                        <div id="panel-connection">-</div>
+                                    </div>
+                                    <div class="col-6">
+                                        <strong class="text-muted">Action:</strong>
+                                        <div id="panel-action">-</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Тело запроса и ответа -->
+                            <div class="row">
+                                <div class="col-12 mb-3">
+                                    <h6 class="border-bottom pb-2 d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <span class="badge bg-info">ЗАПРОС</span>
+                                            <span id="panel-req-time" class="text-muted ms-2" style="font-size: 0.85rem;"></span>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-secondary copy-json-btn" data-target="panel-request-body" title="Копировать JSON">
+                                            📋 Копировать
+                                        </button>
+                                    </h6>
+                                    <div id="panel-request-body" class="json-panel" style="max-height: 250px;">
+                                        <pre>Загрузка...</pre>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <h6 class="border-bottom pb-2 d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <span class="badge bg-success">ОТВЕТ</span>
+                                            <span id="panel-resp-time" class="text-muted ms-2" style="font-size: 0.85rem;"></span>
+                                            <span id="panel-processing" class="badge bg-warning text-dark ms-2"></span>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-secondary copy-json-btn" data-target="panel-response-body" title="Копировать JSON">
+                                            📋 Копировать
+                                        </button>
+                                    </h6>
+                                    <div id="panel-response-body" class="json-panel" style="max-height: 250px;">
+                                        <pre>Загрузка...</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-
         <!-- Медленные запросы -->
         <div class="tab-pane fade" id="tab-slow">
             <div class="card p-3">
@@ -1380,16 +1503,36 @@ $(document).on('click', '.show-error-btn', function(e) {
 
 
 // ===== Клик по строке таблицы пар — открывает детали =====
+// ===== Клик по строке таблицы пар — открывает детали в правой панели =====
 $(document).on('click', '#pairsTable tbody tr', function(e) {
-    // Игнорируем клики по кнопкам и ссылкам
     if ($(e.target).closest('.btn, a').length) {
         return;
     }
-
-    // Получаем данные строки из DataTables
     const rowData = pairsDT.row(this).data();
-    if (rowData && rowData[6]) { // <-- ИЗМЕНЕНО: индекс 6 (ID запроса теперь в конце)
+    if (rowData && rowData[6]) { // Индекс 6 = ID запроса
         showDetails(rowData[6]);
+    }
+});
+
+// ===== Клик по строке таблицы медленных запросов =====
+$(document).on('click', '#slowTable tbody tr', function(e) {
+    if ($(e.target).closest('.btn, a').length) {
+        return;
+    }
+    const rowData = slowDT.row(this).data();
+    if (rowData && rowData[7]) { // Индекс 7 = ID запроса
+        showDetails(rowData[7]);
+    }
+});
+
+// ===== Клик по строке таблицы осиротевших =====
+$(document).on('click', '#orphansTable tbody tr', function(e) {
+    if ($(e.target).closest('.btn, a').length) {
+        return;
+    }
+    const rowData = orphansDT.row(this).data();
+    if (rowData && rowData[0]) { // Индекс 0 = ID запроса
+        showDetails(rowData[0]);
     }
 });
 
@@ -1680,48 +1823,73 @@ async function loadTop() {
     }
 }
 
-// ===== Просмотр деталей =====
+
+// ===== Показ деталей в правой панели =====
 async function showDetails(requestId) {
-    document.getElementById('modal-request-id').textContent = requestId;
-    document.getElementById('modal-request-id-display').textContent = requestId;
-    ['modal-method','modal-device','modal-user','modal-session','modal-terminal','modal-connection'].forEach(id => document.getElementById(id).textContent = '-');
-    ['modal-req-time','modal-resp-time','modal-processing'].forEach(id => document.getElementById(id).textContent = '');
-    document.getElementById('modal-request-body').innerHTML = '<pre>Загрузка...</pre>';
-    document.getElementById('modal-response-body').innerHTML = '<pre>Загрузка...</pre>';
+    // 1. Подсвечиваем выбранную строку
+    $('#pairsTable tbody tr').removeClass('selected');
+    const selectedRow = pairsDT.rows().nodes()[pairsDT.row(function(idx, data, node) {
+        return data[6] == requestId; // Индекс 6 = ID запроса
+    }).index()];
+    if (selectedRow) {
+        $(selectedRow).addClass('selected');
+    }
 
-    const modal = new bootstrap.Modal(document.getElementById('detailModal'));
-    modal.show();
+    // 2. Показываем панель деталей
+    const detailPanel = document.getElementById('detail-panel');
+    detailPanel.style.display = 'block';
 
+    // 3. Сбрасываем содержимое панели
+    document.getElementById('panel-request-id').textContent = requestId;
+    ['panel-method', 'panel-device', 'panel-user', 'panel-session', 'panel-terminal', 'panel-connection', 'panel-action'].forEach(id => {
+        document.getElementById(id).textContent = '-';
+    });
+    ['panel-req-time', 'panel-resp-time', 'panel-processing'].forEach(id => {
+        document.getElementById(id).textContent = '';
+    });
+    document.getElementById('panel-request-body').innerHTML = '<pre>Загрузка...</pre>';
+    document.getElementById('panel-response-body').innerHTML = '<pre>Загрузка...</pre>';
+
+    // 4. Загружаем данные с сервера
     try {
-        const d = await fetch(`/api/events/${requestId}`).then(r=>r.json());
+        const d = await fetch(`/api/events/${requestId}`).then(r => r.json());
         const evt = d.request || d.response;
+
         if (evt) {
-            document.getElementById('modal-method').textContent = evt.method || '-';
-            document.getElementById('modal-device').textContent = evt.device || '-';
-            document.getElementById('modal-user').textContent = evt.user_name || '-';
-            document.getElementById('modal-session').textContent = evt.session_id || '-';
-            document.getElementById('modal-terminal').textContent = evt.terminal || '-';
-            document.getElementById('modal-connection').textContent = evt.connection_id || '-';
+            document.getElementById('panel-method').textContent = evt.method || '-';
+            document.getElementById('panel-device').textContent = evt.device || '-';
+            document.getElementById('panel-user').textContent = evt.user_name || '-';
+            document.getElementById('panel-session').textContent = evt.session_id || '-';
+            document.getElementById('panel-terminal').textContent = evt.terminal || '-';
+            document.getElementById('panel-connection').textContent = evt.connection_id || '-';
+            document.getElementById('panel-action').textContent = d.action || '-';
         }
+
         if (d.request) {
-            document.getElementById('modal-req-time').textContent = formatDate(d.request.event_ts);
-            document.getElementById('modal-request-body').innerHTML = `<pre>${escapeHtml(formatJson(d.request.body_json))}</pre>`;
+            document.getElementById('panel-req-time').textContent = formatDate(d.request.event_ts);
+            document.getElementById('panel-request-body').innerHTML = `<pre>${escapeHtml(formatJson(d.request.body_json))}</pre>`;
         } else {
-            document.getElementById('modal-request-body').innerHTML = '<pre class="text-muted">Запрос не найден</pre>';
+            document.getElementById('panel-request-body').innerHTML = '<pre class="text-muted">Запрос не найден</pre>';
         }
+
         if (d.response) {
-            document.getElementById('modal-resp-time').textContent = formatDate(d.response.event_ts);
-            document.getElementById('modal-processing').textContent = d.response.processing_ms ? `${d.response.processing_ms} мс` : '';
-            document.getElementById('modal-response-body').innerHTML = `<pre>${escapeHtml(formatJson(d.response.body_json))}</pre>`;
+            document.getElementById('panel-resp-time').textContent = formatDate(d.response.event_ts);
+            document.getElementById('panel-processing').textContent = d.response.processing_ms ? `${d.response.processing_ms} мс` : '';
+            document.getElementById('panel-response-body').innerHTML = `<pre>${escapeHtml(formatJson(d.response.body_json))}</pre>`;
         } else {
-            document.getElementById('modal-response-body').innerHTML = '<pre class="text-muted">Ответ не найден</pre>';
+            document.getElementById('panel-response-body').innerHTML = '<pre class="text-muted">Ответ не найден</pre>';
         }
     } catch (e) {
         console.error(e);
-        document.getElementById('modal-request-body').innerHTML = `<pre class="text-danger">Ошибка: ${e.message}</pre>`;
+        document.getElementById('panel-request-body').innerHTML = `<pre class="text-danger">Ошибка: ${e.message}</pre>`;
     }
 }
 
+// ===== Закрытие панели деталей =====
+function closeDetailPanel() {
+    document.getElementById('detail-panel').style.display = 'none';
+    $('#pairsTable tbody tr').removeClass('selected');
+}
 
 
 // ===== Универсальная функция копирования (максимально надёжная) =====
