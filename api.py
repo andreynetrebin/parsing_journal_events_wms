@@ -36,6 +36,8 @@ def normalize_date(date_str: str | None, is_end: bool = False) -> str | None:
 def _open() -> MartDB:
     """Открывает витрину в режиме read_only. Сырая база не затрагивается."""
     db_paths = get_db_paths()
+    # Стандартный путь с read_only=True работает надежно и на Windows, и на Linux
+    # Он предотвращает конфликты блокировок между воркерами Gunicorn
     return MartDB(db_paths["mart"], read_only=True)
 
 
@@ -367,30 +369,45 @@ def orphans(
 
 # ===== Детали события =====
 @app.get("/api/events/{request_id}")
-def event_details(request_id: int):
+def event_details(
+    request_id: int,
+    device: str | None = Query(None, description="MAC устройства для точной привязки"),
+    event_ts: str | None = Query(None, description="Время события для точной привязки"),
+):
+    where = ["request_id = ?"]
+    params: list[Any] = [request_id]
+
+    if device:
+        where.append("device = ?")
+        params.append(device)
+
+    if event_ts:
+        # Сравниваем с точностью до секунды, т.к. в UI время обрезается до секунд
+        where.append("DATE_TRUNC('second', COALESCE(request_ts, response_ts)) = CAST(? AS TIMESTAMP)")
+        params.append(event_ts)
+
+    where_sql = " AND ".join(where)
+
     with _open() as db:
-        row = db.con.execute("""
+        row = db.con.execute(f"""
             SELECT
                 request_id, method, device, terminal, user_name, session_id, connection_id,
                 request_ts, response_ts, processing_ms,
                 request_body_json, response_body_json, request_file, response_file,
                 action
             FROM tsd_pairs_mart
-            WHERE request_id = ?
-        """, [request_id]).fetchone()
+            WHERE {where_sql}
+            ORDER BY request_ts DESC
+            LIMIT 1
+        """, params).fetchone()
 
         if not row:
             raise HTTPException(status_code=404, detail=f"Событие {request_id} не найдено")
 
-        # Индексы: 0=request_id, 1=method, 2=device, 3=terminal, 4=user_name,
-        # 5=session_id, 6=connection_id, 7=request_ts, 8=response_ts, 9=processing_ms,
-        # 10=request_body_json, 11=response_body_json, 12=request_file, 13=response_file,
-        # 14=action
         action_value = row[14] if len(row) > 14 else None
 
-        # Формируем структуру, ожидаемую фронтендом, только из данных витрины
         req_event = None
-        if row[7]:  # request_ts
+        if row[7]:
             req_event = {
                 "direction": "request", "event_ts": str(row[7]), "method": row[1],
                 "device": row[2], "terminal": row[3], "user_name": row[4],
@@ -400,7 +417,7 @@ def event_details(request_id: int):
             }
 
         resp_event = None
-        if row[8]:  # response_ts
+        if row[8]:
             resp_event = {
                 "direction": "response", "event_ts": str(row[8]), "method": row[1],
                 "device": row[2], "terminal": row[3], "user_name": row[4],
@@ -416,6 +433,7 @@ def event_details(request_id: int):
             "response": resp_event,
             "events_count": (1 if req_event else 0) + (1 if resp_event else 0)
         }
+
 
 
 @app.get("/api/pairs")
@@ -991,45 +1009,45 @@ def export_data(
             columns = [d[0] for d in cursor.description]
 
             if format == "csv":
-                # BOM для корректного открытия в Excel
-                yield "\ufeff"
-                # Заголовки
-                yield ";".join(columns) + "\n"
-                # Данные потоково
+                yield "\ufeff".encode('utf-8')  # BOM для Excel
+                yield (";".join(columns) + "\n").encode('utf-8')
+
+                # Потоковая запись чанками по 10 000 строк (безопасно для памяти)
                 while True:
-                    rows = cursor.fetchmany(5000)
+                    rows = cursor.fetchmany(10000)
                     if not rows:
                         break
                     for row in rows:
-                        # Преобразуем значения в строки, экранируя спецсимволы
                         values = []
                         for v in row:
                             if v is None:
                                 values.append("")
                             else:
                                 s = str(v)
-                                # Экранирование для CSV: если есть ; " или перенос — оборачиваем в кавычки
                                 if any(c in s for c in [';', '"', '\n', '\r']):
                                     s = '"' + s.replace('"', '""') + '"'
                                 values.append(s)
-                        yield ";".join(values) + "\n"
+                        yield (";".join(values) + "\n").encode('utf-8')
 
             elif format == "jsonl":
-                # JSON Lines — каждая строка отдельный JSON объект
+                # JSONL тоже потоковый и безопасный
                 while True:
-                    rows = cursor.fetchmany(5000)
+                    rows = cursor.fetchmany(10000)
                     if not rows:
                         break
                     for row in rows:
                         record = dict(zip(columns, row))
-                        # Преобразуем datetime в строку
                         for key, value in record.items():
                             if hasattr(value, 'isoformat'):
                                 record[key] = value.isoformat()
-                        yield json_lib.dumps(record, ensure_ascii=False, default=str) + "\n"
+                        yield (json_lib.dumps(record, ensure_ascii=False, default=str) + "\n").encode('utf-8')
 
-            else:  # json array
-                # Собираем все данные в память (только для небольших выборок)
+            else:  # format == "json" (ОПАСНО для больших данных!)
+                # Жестко ограничиваем память для обычного JSON
+                if limit > 50000:
+                    raise HTTPException(status_code=400,
+                                        detail="Формат JSON Array поддерживается только для выборок до 50 000 записей. Используйте CSV или JSONL для больших объемов.")
+
                 all_rows = cursor.fetchall()
                 data = []
                 for row in all_rows:
@@ -1038,7 +1056,7 @@ def export_data(
                         if hasattr(value, 'isoformat'):
                             record[key] = value.isoformat()
                     data.append(record)
-                yield json_lib.dumps(data, ensure_ascii=False, indent=2, default=str)
+                yield json_lib.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8')
 
     return StreamingResponse(
         generate(),

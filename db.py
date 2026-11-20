@@ -395,20 +395,36 @@ class MartDB:
     def __exit__(self, *exc) -> None:
         self.con.close()
 
+
     def rebuild_from_raw(self, raw_db_path: str | Path) -> dict:
         """
-        Пересчет витрины и таблицы ошибок из сырой базы.
-        Использует ATTACH ... (READ_ONLY), поэтому raw-база НЕ блокируется
-        и импорт может продолжаться параллельно.
+        Полный пересчёт витрины с КОРРЕКТНОЙ попарной привязкой запрос-ответ.
+        Использует ROW_NUMBER() для связи N-го запроса с N-м ответом внутри одного request_id и device.
         """
         raw_path = str(Path(raw_db_path).resolve())
-
         self.con.execute(f"ATTACH '{raw_path}' AS raw_db (READ_ONLY)")
         try:
-            # 1. Пересчет витрины пар (теперь с телами запросов/ответов)
+            # 1. Пересчет витрины пар
             self.con.execute("DELETE FROM tsd_pairs_mart")
             self.con.execute("""
                 INSERT INTO tsd_pairs_mart
+                WITH numbered AS (
+                    SELECT 
+                        request_id, method, device, terminal, user_name, session_id, connection_id,
+                        direction, event_ts, processing_ms, body_json, source_file, action,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY request_id, device, direction 
+                            ORDER BY event_ts
+                        ) AS rn
+                    FROM raw_db.tsd_events
+                    WHERE request_id IS NOT NULL
+                ),
+                requests AS (
+                    SELECT * FROM numbered WHERE direction = 'request'
+                ),
+                responses AS (
+                    SELECT * FROM numbered WHERE direction = 'response'
+                )
                 SELECT
                     r.request_id, r.method, r.device, r.terminal,
                     r.event_ts AS request_ts,
@@ -420,36 +436,40 @@ class MartDB:
                     r.user_name, r.session_id, r.connection_id,
                     r.source_file AS request_file,
                     resp.source_file AS response_file,
-                    r.body_json AS request_body_json,      -- ДОБАВЛЕНО
-                    resp.body_json AS response_body_json,   -- ДОБАВЛЕНО
-                    r.action     
-                FROM raw_db.tsd_events r
-                LEFT JOIN raw_db.tsd_events resp
+                    r.body_json AS request_body_json,
+                    resp.body_json AS response_body_json,
+                    r.action
+                FROM requests r
+                LEFT JOIN responses resp
                     ON r.request_id = resp.request_id
-                   AND resp.direction = 'response'
-                WHERE r.direction = 'request'
-                ORDER BY r.event_ts DESC
+                   AND r.device = resp.device
+                   AND r.rn = resp.rn
             """)
-            pairs_count = self.con.execute(
-                "SELECT count(*) FROM tsd_pairs_mart"
-            ).fetchone()[0]
+            pairs_count = self.con.execute("SELECT count(*) FROM tsd_pairs_mart").fetchone()[0]
 
-            # 2. Синхронизация таблицы ошибок
+            # 2. Синхронизация таблицы ошибок (явно указываем 9 колонок)
             self.con.execute("DELETE FROM tsd_errors")
             self.con.execute("""
-                INSERT INTO tsd_errors
-                SELECT event_ts, method, device, terminal, user_name,
-                       session_id, connection_id, comment_raw, source_file
+                INSERT INTO tsd_errors 
+                    (event_ts, method, device, terminal, user_name, session_id, connection_id, comment_raw, source_file)
+                SELECT 
+                    event_ts, method, device, terminal, user_name, session_id, connection_id, comment_raw, source_file
                 FROM raw_db.tsd_events
                 WHERE direction = 'error'
             """)
-            errors_count = self.con.execute(
-                "SELECT count(*) FROM tsd_errors"
-            ).fetchone()[0]
+            errors_count = self.con.execute("SELECT count(*) FROM tsd_errors").fetchone()[0]
+
+            # 3. Логируем пересчёт
+            self.con.execute("""
+                INSERT OR REPLACE INTO rebuild_log 
+                (id, rebuild_ts, mode, pairs_count, errors_count, duration_sec)
+                VALUES (1, current_timestamp, 'full', ?, ?, 0)
+            """, [pairs_count, errors_count])
 
             return {"pairs": pairs_count, "errors": errors_count}
         finally:
             self.con.execute("DETACH raw_db")
+
 
     def get_last_rebuild_info(self) -> tuple[str | None, str | None]:
         """
@@ -467,21 +487,17 @@ class MartDB:
 
     def incremental_rebuild_from_raw(self, raw_db_path: str | Path, duration_sec: float = 0) -> dict:
         """
-        Инкрементальный пересчёт: обновляет только пары, связанные с новыми файлами.
+        Инкрементальный пересчёт с КОРРЕКТНОЙ попарной привязкой.
         """
         raw_path = str(Path(raw_db_path).resolve())
 
-        # Получаем timestamp последнего пересчёта
         last_rebuild_ts, _ = self.get_last_rebuild_info()
         if not last_rebuild_ts:
-            raise RuntimeError(
-                "Нет записи о последнем пересчёте в rebuild_log. "
-                "Выполните полный пересчёт: python main.py rebuild-mart --full"
-            )
+            raise RuntimeError("Нет записи о последнем пересчёте в rebuild_log. Выполните полный пересчёт.")
 
         self.con.execute(f"ATTACH '{raw_path}' AS raw_db (READ_ONLY)")
         try:
-            # 1. Находим request_id из новых файлов (и запросы, и ответы!)
+            # 1. Находим request_id из новых файлов
             self.con.execute("DROP TABLE IF EXISTS new_request_ids")
             self.con.execute("""
                 CREATE TEMP TABLE new_request_ids AS
@@ -495,7 +511,6 @@ class MartDB:
             """, [last_rebuild_ts])
 
             new_count = self.con.execute("SELECT count(*) FROM new_request_ids").fetchone()[0]
-
             if new_count == 0:
                 self.con.execute("DROP TABLE IF EXISTS new_request_ids")
                 return {"pairs": 0, "errors": 0, "mode": "incremental", "skipped": True, "new_pairs": 0}
@@ -506,9 +521,26 @@ class MartDB:
                 WHERE request_id IN (SELECT request_id FROM new_request_ids)
             """)
 
-            # 3. Вставляем новые пары (только для этих request_id)
+            # 3. Вставляем новые пары с корректной привязкой через ROW_NUMBER()
             self.con.execute("""
                 INSERT INTO tsd_pairs_mart
+                WITH numbered AS (
+                    SELECT 
+                        request_id, method, device, terminal, user_name, session_id, connection_id,
+                        direction, event_ts, processing_ms, body_json, source_file, action,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY request_id, device, direction 
+                            ORDER BY event_ts
+                        ) AS rn
+                    FROM raw_db.tsd_events
+                    WHERE request_id IN (SELECT request_id FROM new_request_ids)
+                ),
+                requests AS (
+                    SELECT * FROM numbered WHERE direction = 'request'
+                ),
+                responses AS (
+                    SELECT * FROM numbered WHERE direction = 'response'
+                )
                 SELECT
                     r.request_id, r.method, r.device, r.terminal,
                     r.event_ts AS request_ts,
@@ -523,18 +555,16 @@ class MartDB:
                     r.body_json AS request_body_json,
                     resp.body_json AS response_body_json,
                     r.action
-                FROM raw_db.tsd_events r
-                LEFT JOIN raw_db.tsd_events resp
+                FROM requests r
+                LEFT JOIN responses resp
                     ON r.request_id = resp.request_id
-                   AND resp.direction = 'response'
-                WHERE r.direction = 'request'
-                  AND r.request_id IN (SELECT request_id FROM new_request_ids)
+                   AND r.device = resp.device
+                   AND r.rn = resp.rn
             """)
 
             pairs_count = self.con.execute("SELECT count(*) FROM tsd_pairs_mart").fetchone()[0]
 
             # 4. Инкрементальное обновление ошибок
-            # Находим файлы с ошибками, импортированные после последнего пересчёта
             self.con.execute("DROP TABLE IF EXISTS new_error_files")
             self.con.execute("""
                 CREATE TEMP TABLE new_error_files AS
@@ -544,15 +574,16 @@ class MartDB:
                   AND ingested_at > CAST(? AS TIMESTAMP)
             """, [last_rebuild_ts])
 
-            # Удаляем старые ошибки из этих файлов и вставляем новые
             self.con.execute("""
                 DELETE FROM tsd_errors 
                 WHERE source_file IN (SELECT source_file FROM new_error_files)
             """)
+
             self.con.execute("""
-                INSERT INTO tsd_errors
-                SELECT event_ts, method, device, terminal, user_name,
-                       session_id, connection_id, comment_raw, source_file
+                INSERT INTO tsd_errors 
+                    (event_ts, method, device, terminal, user_name, session_id, connection_id, comment_raw, source_file)
+                SELECT 
+                    event_ts, method, device, terminal, user_name, session_id, connection_id, comment_raw, source_file
                 FROM raw_db.tsd_events
                 WHERE direction = 'error'
                   AND source_file IN (SELECT source_file FROM new_error_files)
@@ -570,11 +601,6 @@ class MartDB:
             self.con.execute("DROP TABLE IF EXISTS new_request_ids")
             self.con.execute("DROP TABLE IF EXISTS new_error_files")
 
-            return {
-                "pairs": pairs_count,
-                "errors": errors_count,
-                "mode": "incremental",
-                "new_pairs": new_count
-            }
+            return {"pairs": pairs_count, "errors": errors_count, "mode": "incremental", "new_pairs": new_count}
         finally:
             self.con.execute("DETACH raw_db")

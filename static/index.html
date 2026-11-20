@@ -1320,7 +1320,6 @@ function buildCommonParams(extra = {}) {
 
 
 // ===== Инициализация DataTables с server-side пагинацией =====
-// ===== Инициализация DataTables с server-side пагинацией =====
 function initPairsTable() {
     if (pairsDT) pairsDT.destroy();
 
@@ -1501,64 +1500,33 @@ $(document).on('click', '.show-error-btn', function(e) {
     showErrorDetails(txt.value);
 });
 
-
-// ===== Клик по строке таблицы пар — открывает детали =====
-// ===== Клик по строке таблицы пар — открывает детали в правой панели =====
+// ===== Клик по строке таблицы пар =====
 $(document).on('click', '#pairsTable tbody tr', function(e) {
-    if ($(e.target).closest('.btn, a').length) {
-        return;
-    }
+    if ($(e.target).closest('.btn, a').length) return;
     const rowData = pairsDT.row(this).data();
-    if (rowData && rowData[6]) { // Индекс 6 = ID запроса
-        showDetails(rowData[6]);
+    if (rowData && rowData[6]) {
+        showDetails.call(this, rowData[6], rowData[4], rowData[0]);
     }
 });
 
 // ===== Клик по строке таблицы медленных запросов =====
 $(document).on('click', '#slowTable tbody tr', function(e) {
-    if ($(e.target).closest('.btn, a').length) {
-        return;
-    }
+    if ($(e.target).closest('.btn, a').length) return;
     const rowData = slowDT.row(this).data();
-    if (rowData && rowData[7]) { // Индекс 7 = ID запроса
-        showDetails(rowData[7]);
+    if (rowData && rowData[7]) {
+        showDetails.call(null, rowData[7], rowData[4], rowData[0]);
     }
 });
 
 // ===== Клик по строке таблицы осиротевших =====
 $(document).on('click', '#orphansTable tbody tr', function(e) {
-    if ($(e.target).closest('.btn, a').length) {
-        return;
-    }
+    if ($(e.target).closest('.btn, a').length) return;
     const rowData = orphansDT.row(this).data();
-    if (rowData && rowData[0]) { // Индекс 0 = ID запроса
-        showDetails(rowData[0]);
+    if (rowData && rowData[0]) {
+        showDetails.call(null, rowData[0], rowData[2], rowData[5]);
     }
 });
 
-// ===== Клик по строке таблицы медленных запросов =====
-$(document).on('click', '#slowTable tbody tr', function(e) {
-    if ($(e.target).closest('.btn, a').length) {
-        return;
-    }
-
-    const rowData = slowDT.row(this).data();
-    if (rowData && rowData[7]) { // <-- ИЗМЕНЕНО: индекс 7 (ID запроса теперь в конце)
-        showDetails(rowData[7]);
-    }
-});
-
-// ===== Клик по строке таблицы осиротевших =====
-$(document).on('click', '#orphansTable tbody tr', function(e) {
-    if ($(e.target).closest('.btn, a').length) {
-        return;
-    }
-
-    const rowData = orphansDT.row(this).data();
-    if (rowData && rowData[0]) { // <-- ОСТАВЛЯЕМ 0, так как ID всё ещё первый
-        showDetails(rowData[0]);
-    }
-});
 
 // ===== Безопасный обработчик клика для кнопки "Полный текст" (и для клика по строке) =====
 function showErrorDetails(errorText) {
@@ -1825,34 +1793,35 @@ async function loadTop() {
 
 
 // ===== Показ деталей в правой панели =====
-async function showDetails(requestId) {
-    // 1. Подсвечиваем выбранную строку
+async function showDetails(requestId, device, eventTs) {
+    // 1. Подсветка выбранной строки (только в таблице пар)
     $('#pairsTable tbody tr').removeClass('selected');
-    const selectedRow = pairsDT.rows().nodes()[pairsDT.row(function(idx, data, node) {
-        return data[6] == requestId; // Индекс 6 = ID запроса
-    }).index()];
-    if (selectedRow) {
-        $(selectedRow).addClass('selected');
-    }
+    $(this).closest('tr').addClass('selected');
 
-    // 2. Показываем панель деталей
-    const detailPanel = document.getElementById('detail-panel');
-    detailPanel.style.display = 'block';
+    // 2. Показываем панель
+    const panel = document.getElementById('detail-panel');
+    panel.style.display = 'block';
 
-    // 3. Сбрасываем содержимое панели
+    // 3. Сброс полей панели
     document.getElementById('panel-request-id').textContent = requestId;
-    ['panel-method', 'panel-device', 'panel-user', 'panel-session', 'panel-terminal', 'panel-connection', 'panel-action'].forEach(id => {
+    ['panel-method','panel-device','panel-user','panel-session','panel-terminal','panel-connection','panel-action'].forEach(id => {
         document.getElementById(id).textContent = '-';
     });
-    ['panel-req-time', 'panel-resp-time', 'panel-processing'].forEach(id => {
+    ['panel-req-time','panel-resp-time','panel-processing'].forEach(id => {
         document.getElementById(id).textContent = '';
     });
     document.getElementById('panel-request-body').innerHTML = '<pre>Загрузка...</pre>';
     document.getElementById('panel-response-body').innerHTML = '<pre>Загрузка...</pre>';
 
-    // 4. Загружаем данные с сервера
+    // 4. Формируем URL с точной привязкой
     try {
-        const d = await fetch(`/api/events/${requestId}`).then(r => r.json());
+        let url = `/api/events/${requestId}`;
+        const qs = new URLSearchParams();
+        if (device) qs.set('device', device);
+        if (eventTs) qs.set('event_ts', eventTs);
+        if (qs.toString()) url += `?${qs.toString()}`;
+
+        const d = await fetch(url).then(r => r.json());
         const evt = d.request || d.response;
 
         if (evt) {
@@ -1862,7 +1831,7 @@ async function showDetails(requestId) {
             document.getElementById('panel-session').textContent = evt.session_id || '-';
             document.getElementById('panel-terminal').textContent = evt.terminal || '-';
             document.getElementById('panel-connection').textContent = evt.connection_id || '-';
-            document.getElementById('panel-action').textContent = d.action || '-';
+            document.getElementById('panel-action').textContent = d.action || evt.action || '-';
         }
 
         if (d.request) {
@@ -1884,6 +1853,7 @@ async function showDetails(requestId) {
         document.getElementById('panel-request-body').innerHTML = `<pre class="text-danger">Ошибка: ${e.message}</pre>`;
     }
 }
+
 
 // ===== Закрытие панели деталей =====
 function closeDetailPanel() {
