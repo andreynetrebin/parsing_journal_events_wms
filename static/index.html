@@ -94,6 +94,168 @@
             background-color: #f8f9fa;
         }
 
+
+        /* ===== WMS dashboard: light redesign ===== */
+        :root {
+            color-scheme: light;
+            --app-bg: #f4f7fb;
+            --surface: #ffffff;
+            --surface-soft: #f8fafc;
+            --ink: #17243a;
+            --muted: #718096;
+            --line: #e5ebf2;
+            --brand: #315ee8;
+            --brand-soft: #edf2ff;
+            --success-soft: #eaf7ef;
+            --warning-soft: #fff5df;
+            --danger-soft: #fff0ef;
+            --shadow: 0 8px 28px rgba(28, 45, 78, .055);
+        }
+        html { scroll-behavior: smooth; }
+        body {
+            background: var(--app-bg);
+            color: var(--ink);
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: .9rem;
+            line-height: 1.5;
+        }
+        .navbar.navbar-dark.bg-primary {
+            background: #fff !important;
+            color: var(--ink) !important;
+            border-bottom: 1px solid var(--line);
+            box-shadow: 0 2px 12px rgba(26, 42, 70, .04);
+            padding: .85rem 1.25rem;
+        }
+        .navbar .navbar-brand { color: var(--ink) !important; font-size: 1.08rem; font-weight: 750; letter-spacing: -.025em; }
+        #db-status {
+            background: var(--surface-soft) !important;
+            border: 1px solid var(--line);
+            padding: 7px 12px !important;
+            border-radius: 12px !important;
+            backdrop-filter: none !important;
+            flex-wrap: wrap;
+        }
+        #db-status .text-white, #db-status .text-white-50 { color: var(--muted) !important; }
+        #db-status .text-white { color: var(--ink) !important; }
+        #db-status span { font-size: .78rem !important; }
+        .container-fluid { padding-left: clamp(14px, 2.2vw, 34px); padding-right: clamp(14px, 2.2vw, 34px); }
+        .card, .filter-panel {
+            background: var(--surface);
+            border: 1px solid var(--line) !important;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+        }
+        .card { margin-bottom: 1rem; }
+        #summary-row { row-gap: .15rem; }
+        #summary-row > div { min-width: 145px; }
+        .stat-card {
+            position: relative;
+            min-height: 112px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+            text-align: left;
+            padding: 1rem 1.15rem;
+            overflow: hidden;
+        }
+        .stat-card::after {
+            content: "";
+            position: absolute;
+            right: -18px;
+            top: -24px;
+            width: 76px;
+            height: 76px;
+            border-radius: 50%;
+            background: var(--brand-soft);
+        }
+        .stat-value { font-size: clamp(1.45rem, 2vw, 1.9rem); font-weight: 760; letter-spacing: -.04em; color: var(--ink); line-height: 1.2; }
+        .stat-label { margin-top: .42rem; font-size: .72rem; font-weight: 650; color: var(--muted); text-transform: none; letter-spacing: .025em; }
+        .stat-ok { color: #16834c; } .stat-warn { color: #b77912; } .stat-danger { color: #d34b45; }
+        .filter-panel { padding: 1.15rem 1.25rem; margin-bottom: 1.1rem; }
+        .filter-panel::before { content: "Фильтры и поиск"; display: block; color: var(--ink); font-size: .98rem; font-weight: 750; margin-bottom: .9rem; }
+        .form-label { color: #46556d; font-size: .76rem; font-weight: 680; margin-bottom: .38rem; }
+        .form-control, .form-select, .ts-control {
+            border-color: #dce4ef !important;
+            border-radius: 9px !important;
+            min-height: 36px;
+            color: var(--ink);
+            box-shadow: none !important;
+        }
+        .form-control:focus, .form-select:focus, .ts-control.focus {
+            border-color: #8da8ff !important;
+            box-shadow: 0 0 0 3px rgba(49,94,232,.10) !important;
+        }
+        .btn { border-radius: 9px; font-weight: 620; }
+        .btn-primary { background: var(--brand); border-color: var(--brand); }
+        .btn-outline-secondary { border-color: #d9e1ec; color: #53627a; }
+        .btn-group .btn { font-size: .74rem !important; }
+        .nav-tabs {
+            border-bottom: 1px solid var(--line);
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            gap: .3rem;
+            scrollbar-width: thin;
+            white-space: nowrap;
+        }
+        .nav-tabs .nav-link {
+            border: 0;
+            border-radius: 9px 9px 0 0;
+            color: #64748b;
+            padding: .7rem .9rem;
+            font-size: .8rem;
+            font-weight: 650;
+        }
+        .nav-tabs .nav-link:hover { color: var(--brand); background: #eef3ff; }
+        .nav-tabs .nav-link.active { color: var(--brand); background: #fff; box-shadow: inset 0 -2px 0 var(--brand); }
+        .tab-content { padding-top: .1rem; }
+        #tab-pairs > .card { padding: 1.15rem !important; }
+        #tab-pairs h6, .tab-pane .card h6 { font-weight: 750; color: var(--ink); }
+        #pairs-count { background: var(--brand-soft) !important; color: var(--brand) !important; font-weight: 700; }
+        #table-container { flex: 0 0 100%; max-width: 100%; width: 100%; transition: all .2s ease; }
+        #detail-panel { flex: 0 0 100%; max-width: 100%; width: 100%; border: 1px solid var(--line) !important; border-radius: 14px; margin-top: 1rem; background: var(--surface-soft) !important; }
+        #tab-pairs .row:has(#detail-panel[style*="display: block"]) #table-container { flex: 0 0 58.333333%; max-width: 58.333333%; }
+        #tab-pairs .row:has(#detail-panel[style*="display: block"]) #detail-panel { flex: 0 0 41.666667%; max-width: 41.666667%; margin-top: 0; }
+        #detail-panel .p-3 { padding: 1.1rem !important; }
+        .table-responsive { border: 1px solid var(--line); border-radius: 12px; }
+        table.dataTable { margin-top: 0 !important; margin-bottom: 0 !important; border-collapse: separate !important; border-spacing: 0; }
+        .table { color: #344258; vertical-align: middle; }
+        .table thead th { background: #f6f8fc !important; color: #596981; font-size: .72rem; font-weight: 750; text-transform: uppercase; letter-spacing: .035em; border-bottom: 1px solid var(--line) !important; white-space: nowrap; padding: .8rem .7rem; }
+        .table tbody td { padding: .72rem .7rem; border-color: #edf1f6; font-size: .8rem; }
+        .table tbody tr { cursor: pointer; }
+        .table tbody tr:hover td { background: #f3f6ff !important; }
+        .table tbody tr.selected td { background: #eaf0ff !important; color: #2448b8; }
+        .dataTables_wrapper .dataTables_length, .dataTables_wrapper .dataTables_filter { margin-bottom: .75rem; color: var(--muted); font-size: .8rem; }
+        .dataTables_wrapper .dataTables_info { color: var(--muted); font-size: .78rem; padding-top: .9rem; }
+        .dataTables_wrapper .pagination { margin-top: .55rem; }
+        .page-link { color: var(--brand); border-color: var(--line); }
+        .page-item.active .page-link { background: var(--brand); border-color: var(--brand); }
+        .json-panel { border: 1px solid #26344a; border-radius: 10px; line-height: 1.55; }
+        .badge { font-weight: 650; letter-spacing: .01em; }
+        .alert { border: 0; border-radius: 10px; }
+        .loading { padding: 2rem !important; color: var(--muted); }
+        .modal-content { border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 18px 60px rgba(20,35,65,.18); }
+        .modal-header, .modal-footer { border-color: var(--line); }
+        @media (max-width: 991.98px) {
+            .navbar .container-fluid { align-items: flex-start; gap: .75rem; flex-direction: column; }
+            #db-status { width: 100%; gap: .45rem !important; }
+            #summary-row > div { flex: 1 0 30%; }
+            #tab-pairs .row:has(#detail-panel[style*="display: block"]) #table-container,
+            #tab-pairs .row:has(#detail-panel[style*="display: block"]) #detail-panel { flex: 0 0 100%; max-width: 100%; }
+            #detail-panel { margin-top: 1rem !important; }
+        }
+        @media (max-width: 575.98px) {
+            .navbar.navbar-dark.bg-primary { padding: .8rem .9rem; }
+            #db-status { align-items: flex-start !important; flex-direction: column; }
+            #db-status span { border: 0 !important; padding-left: 0 !important; }
+            #summary-row > div { flex: 1 0 46%; }
+            .stat-card { min-height: 96px; padding: .8rem; }
+            .filter-panel { padding: .9rem; }
+            .nav-tabs .nav-link { padding: .6rem .7rem; }
+            #tab-pairs > .card { padding: .8rem !important; }
+        }
+
     </style>
 </head>
 <body>
@@ -203,7 +365,7 @@
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-top">Топ по ТСД</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-chart">📈 График всплесков</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-stats"> Статистика методов</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-errors" type="button">❌ Ошибки ТСД</button>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-errors" type="button">❌ Ошибки ТСД</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-error-stats" type="button">Статистика ошибок</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-api-docs" type="button">📚 Примеры API</button></li>
     </ul>
