@@ -1955,7 +1955,7 @@ async function loadTop() {
 
 
 // ===== Показ деталей в правой панели =====
-async function showDetails(requestId, device, eventTs) {
+async async function showDetails(requestId, device, eventTs) {
     // 1. Подсветка выбранной строки (только в таблице пар)
     $('#pairsTable tbody tr').removeClass('selected');
     $(this).closest('tr').addClass('selected');
