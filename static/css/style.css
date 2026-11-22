@@ -1,0 +1,128 @@
+/* static/css/style.css */
+
+/* Подсветка выбранной строки в таблице */
+.table tbody tr.selected {
+    background-color: #fff3cd !important;
+    font-weight: 500;
+}
+
+.table tbody tr.selected:hover td {
+    background-color: #ffe69c !important;
+}
+
+/* Анимация появления панели деталей */
+#detail-panel {
+    transition: all 0.3s ease;
+}
+
+/* Скроллбар для панели деталей */
+#detail-panel .p-3::-webkit-scrollbar {
+    width: 8px;
+}
+
+#detail-panel .p-3::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+#detail-panel .p-3::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+#detail-panel .p-3::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+body {
+    background-color: #f8f9fa;
+    font-size: 0.9rem;
+}
+
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border: none;
+    margin-bottom: 1rem;
+}
+
+.stat-card {
+    text-align: center;
+    padding: 1rem;
+}
+
+.stat-value {
+    font-size: 1.8rem;
+    font-weight: bold;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-transform: uppercase;
+}
+
+.stat-ok { color: #198754; }
+.stat-warn { color: #ffc107; }
+.stat-danger { color: #dc3545; }
+
+.filter-panel {
+    background: #fff;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.nav-tabs .nav-link {
+    font-size: 0.85rem;
+}
+
+.json-panel {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 12px;
+    border-radius: 6px;
+    max-height: 500px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+}
+
+.json-panel pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+    color: #6c757d;
+}
+
+.btn-details {
+    padding: 2px 8px;
+    font-size: 0.75rem;
+}
+
+/* Курсор-указатель для кликабельных строк */
+.table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.table tbody tr:hover {
+    background-color: #f8f9fa !important;
+}
+
+.table tbody tr:hover td {
+    background-color: #e9ecef !important;
+}
+
+.table tbody tr .btn:hover {
+    background-color: var(--bs-btn-hover-bg) !important;
+}
+
+option.important-method {
+    font-weight: bold !important;
+    color: #0d6efd !important;
+    background-color: #f8f9fa;
+}
