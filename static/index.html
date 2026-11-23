@@ -61,15 +61,27 @@
     <!-- Панель фильтров -->
     <div class="filter-panel">
         <div class="row g-2 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label">Период</label>
-                <div class="btn-group w-100 mb-1" role="group" style="font-size: 0.75rem;">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setDatePreset(1)">1 ч</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setDatePreset(24)">24 ч</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setDatePreset('today')">Сегодня</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setDatePreset('week')">7 дн</button>
+            <div class="col-md-4 date-filter-block">
+                <label class="form-label"><i class="bi bi-calendar3 me-1"></i>Период анализа</label>
+                <div class="date-presets mb-2" role="group" aria-label="Быстрый выбор периода">
+                    <button type="button" class="btn btn-outline-secondary btn-sm date-preset" data-preset="1" onclick="setDatePreset(1)">1 час</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm date-preset" data-preset="24" onclick="setDatePreset(24)">24 часа</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm date-preset" data-preset="today" onclick="setDatePreset('today')">Сегодня</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm date-preset" data-preset="week" onclick="setDatePreset('week')">7 дней</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm date-preset" data-preset="month" onclick="setDatePreset('month')">30 дней</button>
                 </div>
-                <input type="text" id="filter-date-range" class="form-control form-control-sm" placeholder="ГГГГ-ММ-ДД ЧЧ:ММ:СС">
+                <div class="date-range-fields">
+                    <div class="date-field">
+                        <span class="date-field-label">С</span>
+                        <input type="text" id="filter-date-start" class="form-control form-control-sm" placeholder="Начало периода" autocomplete="off" aria-label="Дата и время начала периода">
+                    </div>
+                    <div class="date-field">
+                        <span class="date-field-label">По</span>
+                        <input type="text" id="filter-date-end" class="form-control form-control-sm" placeholder="Конец периода" autocomplete="off" aria-label="Дата и время окончания периода">
+                    </div>
+                </div>
+                <div id="date-range-error" class="date-range-error d-none" role="alert"></div>
+                <div class="date-range-hint"><i class="bi bi-info-circle me-1"></i>Дата и время начала и окончания задаются отдельно</div>
             </div>
             <div class="col-md-2">
                 <label class="form-label">Метод</label>

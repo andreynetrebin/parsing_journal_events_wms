@@ -4,7 +4,8 @@
 // ===== Глобальные переменные =====
 let pairsDT, slowDT, orphansDT, topDT, statsDT, errorsDT, errorStatsDT;
 let hourlyChart = null;
-let dateRangePicker = null;
+let startDatePicker = null;
+let endDatePicker = null;
 let actionsByMethod = {};
 let methodSelect, deviceSelect, actionSelect;
 
@@ -80,28 +81,60 @@ function escapeAttr(str) {
         .replace(/\r/g, '&#13;');
 }
 
-// ===== Быстрый выбор интервала дат =====
+// ===== Синхронизация и быстрый выбор диапазона дат =====
+function updateDateFilterState(showError = false) {
+    const start = startDatePicker?.selectedDates?.[0];
+    const end = endDatePicker?.selectedDates?.[0];
+    const error = document.getElementById('date-range-error');
+
+    if (!start || !end) {
+        if (showError && error) {
+            error.textContent = 'Укажите обе границы периода.';
+            error.classList.remove('d-none');
+        } else if (error) {
+            error.classList.add('d-none');
+        }
+        return false;
+    }
+
+    if (start.getTime() > end.getTime()) {
+        if (error) {
+            error.textContent = 'Начало периода не может быть позже его окончания.';
+            error.classList.remove('d-none');
+        }
+        return false;
+    }
+
+    currentFilters.startDate = formatDateTimeLocal(start);
+    currentFilters.endDate = formatDateTimeLocal(end);
+    if (error) error.classList.add('d-none');
+    return true;
+}
+
 function setDatePreset(preset) {
     const now = new Date();
     let start = new Date(now);
     let end = new Date(now);
 
     if (preset === 1) {
-        start.setHours(now.getHours() - 1);
+        start = new Date(now.getTime() - 60 * 60 * 1000);
     } else if (preset === 24) {
-        start.setDate(now.getDate() - 1);
+        start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     } else if (preset === 'today') {
         start.setHours(0, 0, 0, 0);
     } else if (preset === 'week') {
-        start.setDate(now.getDate() - 7);
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (preset === 'month') {
+        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    const startStr = formatDateTimeLocal(start);
-    const endStr = formatDateTimeLocal(end);
+    startDatePicker.setDate(start, false);
+    endDatePicker.setDate(end, false);
+    updateDateFilterState();
 
-    dateRangePicker.setDate([startStr, endStr]);
-    currentFilters.startDate = startStr;
-    currentFilters.endDate = endStr;
+    document.querySelectorAll('.date-preset').forEach(button => {
+        button.classList.toggle('active', button.dataset.preset === String(preset));
+    });
 
     applyFilters();
 }
@@ -114,7 +147,9 @@ function resetFilters() {
     document.getElementById('filter-body-search').value = '';
 
     const def = getDefaultDateRange();
-    if (dateRangePicker) dateRangePicker.setDate([def.start, def.end]);
+    if (startDatePicker) startDatePicker.setDate(def.start, false);
+    if (endDatePicker) endDatePicker.setDate(def.end, false);
+    document.querySelectorAll('.date-preset').forEach(button => button.classList.remove('active'));
 
     if (methodSelect) methodSelect.clear();
     if (deviceSelect) deviceSelect.clear();
@@ -186,6 +221,8 @@ function resetSearchUI() {
 
 // ===== Применение фильтров =====
 function applyFilters() {
+    if (!updateDateFilterState(true)) return;
+
     let mVal = methodSelect ? methodSelect.getValue() : [];
     let dVal = deviceSelect ? deviceSelect.getValue() : [];
     let aVal = actionSelect ? actionSelect.getValue() : [];
@@ -1070,32 +1107,34 @@ document.addEventListener('DOMContentLoaded', () => {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
 
-    // Flatpickr
+    // Два независимых календаря: отдельные дата и время начала/окончания.
     const def = getDefaultDateRange();
-    dateRangePicker = flatpickr("#filter-date-range", {
-        mode: "range",
+    const datePickerOptions = {
         enableTime: true,
         enableSeconds: true,
         time_24hr: true,
-        minuteIncrement: 1,
+        minuteIncrement: 5,
         dateFormat: "Y-m-d H:i:S",
-        locale: "ru",
-        defaultDate: [def.start, def.end],
+        altInput: true,
+        altFormat: "d.m.Y H:i:S",
         allowInput: true,
-        onChange: function(selectedDates, dateStr, instance) {
-            if (selectedDates.length === 2) {
-                currentFilters.startDate = formatDateTimeLocal(selectedDates[0]);
-                currentFilters.endDate = formatDateTimeLocal(selectedDates[1]);
-            }
+        locale: "ru",
+        disableMobile: true,
+        onChange: function() {
+            updateDateFilterState(false);
+            document.querySelectorAll('.date-preset').forEach(button => button.classList.remove('active'));
         }
-    });
+    };
 
-    document.getElementById('filter-date-range').addEventListener('change', function() {
-        if (dateRangePicker.selectedDates.length === 2) {
-            currentFilters.startDate = formatDateTimeLocal(dateRangePicker.selectedDates[0]);
-            currentFilters.endDate = formatDateTimeLocal(dateRangePicker.selectedDates[1]);
-        }
+    startDatePicker = flatpickr("#filter-date-start", {
+        ...datePickerOptions,
+        defaultDate: def.start
     });
+    endDatePicker = flatpickr("#filter-date-end", {
+        ...datePickerOptions,
+        defaultDate: def.end
+    });
+    updateDateFilterState(false);
 });
 
 // ===== Обработчики кликов по строкам таблиц =====
