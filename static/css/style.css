@@ -476,3 +476,89 @@ table.dataTable { margin: 0 !important; border-collapse: separate !important; bo
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* ===== Improved date range controls ===== */
+.date-filter-block { min-width: 0; }
+.date-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .28rem;
+}
+.date-presets .btn {
+    flex: 1 1 auto;
+    padding: .34rem .45rem;
+    border-radius: 7px !important;
+    font-size: .7rem !important;
+    white-space: nowrap;
+}
+.date-presets .btn.active {
+    color: var(--wms-primary, #315ee8);
+    border-color: #b9c9ff;
+    background: var(--wms-primary-soft, #edf2ff);
+    box-shadow: inset 0 0 0 1px rgba(49,94,232,.08);
+}
+.date-range-fields {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+    gap: .5rem;
+}
+.date-field { position: relative; min-width: 0; }
+.date-field-label {
+    position: absolute;
+    top: -7px;
+    left: 9px;
+    z-index: 2;
+    padding: 0 4px;
+    color: #8290a5;
+    background: #fff;
+    font-size: .62rem;
+    font-weight: 750;
+    line-height: 1;
+}
+.date-field .form-control,
+.date-field .flatpickr-input,
+.date-field input {
+    width: 100%;
+    min-width: 0;
+    padding-left: .65rem;
+    padding-right: .45rem;
+    font-variant-numeric: tabular-nums;
+}
+.date-range-hint {
+    margin-top: .38rem;
+    color: #8793a6;
+    font-size: .65rem;
+}
+.date-range-error {
+    margin-top: .42rem;
+    color: #c43d45;
+    font-size: .72rem;
+    font-weight: 650;
+}
+.flatpickr-calendar {
+    border: 1px solid var(--wms-line, #e5ebf3) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 12px 34px rgba(26,43,74,.15) !important;
+    font-family: inherit !important;
+}
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected:hover {
+    background: var(--wms-primary, #315ee8) !important;
+    border-color: var(--wms-primary, #315ee8) !important;
+}
+.flatpickr-day.today { border-color: #8ea7ff !important; }
+.flatpickr-time input:hover,
+.flatpickr-time .flatpickr-am-pm:hover,
+.flatpickr-time input:focus,
+.flatpickr-time .flatpickr-am-pm:focus {
+    background: #f0f4ff !important;
+}
+@media (max-width: 1199.98px) {
+    .date-presets .btn { flex: 1 1 28%; }
+    .date-range-fields { gap: .35rem; }
+}
+@media (max-width: 767.98px) {
+    .date-presets .btn { flex: 1 1 auto; }
+}
