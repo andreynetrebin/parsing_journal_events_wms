@@ -115,6 +115,25 @@ def test_export_date_range_uses_request_timestamp(api_client):
     assert json.loads(r.content) == []
 
 
+def test_export_and_dashboard_summary_apply_action_filter(api_client):
+    import json
+
+    pairs = api_client.get("/api/pairs").json()
+    selected_action = next((row["action"] for row in pairs if row.get("action")), None)
+    assert selected_action is not None
+
+    params = {"format": "json", "action": selected_action}
+    export_response = api_client.get("/api/export", params=params)
+    assert export_response.status_code == 200
+    exported = json.loads(export_response.content)
+    assert exported
+    assert all(row["action"] == selected_action for row in exported)
+
+    summary_response = api_client.get("/api/dashboard/summary", params={"action": selected_action})
+    assert summary_response.status_code == 200
+    assert summary_response.json()["total_pairs"] == len(exported)
+
+
 def test_export_endpoint_csv(api_client):
     r = api_client.get("/api/export?format=csv&limit=100")
     assert r.status_code == 200
