@@ -930,6 +930,8 @@ def export_data(
         start_date: str | None = Query(None, description="YYYY-MM-DD HH:MM:SS"),
         end_date: str | None = Query(None, description="YYYY-MM-DD HH:MM:SS"),
         limit: int = Query(10000, ge=1, le=500000, description="Максимум записей"),
+        body_search: str | None = Query(None, min_length=1, max_length=500),
+        request_id: int | None = Query(None),
 ):
     """
     Потоковый экспорт данных из витрины в CSV/JSONL/JSON.
@@ -959,6 +961,13 @@ def export_data(
     if min_ms is not None:
         where.append("processing_ms >= ?")
         params.append(min_ms)
+    if request_id is not None:
+        where.append("request_id = ?")
+        params.append(request_id)
+    if body_search:
+        where.append("(contains(lower(COALESCE(request_body_json, '')), lower(?)) "
+                     "OR contains(lower(COALESCE(response_body_json, '')), lower(?)))")
+        params.extend([body_search, body_search])
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
@@ -975,6 +984,14 @@ def export_data(
         ORDER BY COALESCE(request_ts, response_ts) DESC
         LIMIT {int(limit)}
     """
+
+    # Проверяем ограничение до начала StreamingResponse: после отправки
+    # HTTP-заголовков уже нельзя корректно вернуть клиенту статус 400.
+    if format == "json" and limit > 50000:
+        raise HTTPException(
+            status_code=400,
+            detail="Формат JSON Array поддерживается только для выборок до 50 000 записей. Используйте CSV или JSONL для больших объемов.",
+        )
 
     # Формируем имя файла
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1014,7 +1031,7 @@ def export_data(
 
                 # Потоковая запись чанками по 10 000 строк (безопасно для памяти)
                 while True:
-                    rows = cursor.fetchmany(10000)
+                    rows = cursor.fetchmany(1000)
                     if not rows:
                         break
                     for row in rows:
@@ -1042,21 +1059,25 @@ def export_data(
                                 record[key] = value.isoformat()
                         yield (json_lib.dumps(record, ensure_ascii=False, default=str) + "\n").encode('utf-8')
 
-            else:  # format == "json" (ОПАСНО для больших данных!)
-                # Жестко ограничиваем память для обычного JSON
-                if limit > 50000:
-                    raise HTTPException(status_code=400,
-                                        detail="Формат JSON Array поддерживается только для выборок до 50 000 записей. Используйте CSV или JSONL для больших объемов.")
-
-                all_rows = cursor.fetchall()
-                data = []
-                for row in all_rows:
-                    record = dict(zip(columns, row))
-                    for key, value in record.items():
-                        if hasattr(value, 'isoformat'):
-                            record[key] = value.isoformat()
-                    data.append(record)
-                yield json_lib.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8')
+            else:  # JSON Array: сериализуем по одной записи, не накапливая список.
+                yield b"["
+                first = True
+                while True:
+                    rows = cursor.fetchmany(500)
+                    if not rows:
+                        break
+                    for row in rows:
+                        record = dict(zip(columns, row))
+                        for key, value in record.items():
+                            if hasattr(value, 'isoformat'):
+                                record[key] = value.isoformat()
+                        if not first:
+                            yield b","
+                        yield json_lib.dumps(
+                            record, ensure_ascii=False, default=str
+                        ).encode("utf-8")
+                        first = False
+                yield b"]"
 
     return StreamingResponse(
         generate(),
