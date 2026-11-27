@@ -98,6 +98,46 @@ def test_export_csv(api_client):
     assert ";" in lines[0]  # разделитель
 
 
+def test_export_endpoint_csv(api_client):
+    r = api_client.get("/api/export?format=csv&limit=100")
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]
+    assert "request_id" in r.content.decode("utf-8-sig").splitlines()[0]
+
+
+def test_export_endpoint_json_array(api_client):
+    import json
+
+    r = api_client.get("/api/export?format=json&limit=100")
+    assert r.status_code == 200
+    rows = json.loads(r.content)
+    assert len(rows) == 2
+    assert rows[0]["request_id"] is not None
+
+
+def test_export_endpoint_jsonl(api_client):
+    import json
+
+    r = api_client.get("/api/export?format=jsonl&limit=100")
+    assert r.status_code == 200
+    rows = [json.loads(line) for line in r.text.splitlines()]
+    assert len(rows) == 2
+
+
+def test_export_json_limit_rejected_before_stream(api_client):
+    r = api_client.get("/api/export?format=json&limit=50001")
+    assert r.status_code == 400
+    assert "50 000" in r.json()["detail"]
+
+
+def test_export_body_search_filter(api_client):
+    r = api_client.get("/api/export?format=json&body_search=SortByPickingSKU")
+    assert r.status_code == 200
+    import json
+    rows = json.loads(r.content)
+    assert rows
+
+
 def test_hourly_stats(api_client):
     r = api_client.get("/api/stats/hourly?hours=24")
     assert r.status_code == 200
