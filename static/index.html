@@ -50,7 +50,7 @@
 <div class="container-fluid">
     <!-- Сводная статистика -->
     <div class="row mb-3" id="summary-row">
-        <div class="col-md-2"><div class="card stat-card"><div class="stat-value" id="stat-total">-</div><div class="stat-label">Всего пар</div></div></div>
+        <div class="col-md-2"><div class="card stat-card"><div class="stat-value" id="stat-total">-</div><div class="stat-label">Событий по фильтрам</div></div></div>
         <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-ok" id="stat-ok">-</div><div class="stat-label">Успешно</div></div></div>
         <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-warn" id="stat-no-resp">-</div><div class="stat-label">Без ответа</div></div></div>
         <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-danger" id="stat-no-req">-</div><div class="stat-label">Без запроса</div></div></div>
@@ -621,6 +621,7 @@ print("✅ Выгрузка завершена!")</code></pre>
                         <option value="500000">500 000 (осторожно!)</option>
                     </select>
                     <div class="form-text text-muted">
+                        Найдено по текущим фильтрам: <strong id="export-matched-count">—</strong> строк.
                         Большие объёмы могут долго скачиваться. CSV и JSONL работают потоково.
                     </div>
                 </div>
