@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import duckdb
@@ -380,7 +382,18 @@ class MartDB:
 
         self.con = duckdb.connect(str(self.path), read_only=read_only)
         self.con.execute("SET preserve_insertion_order=false;")
-        self.con.execute("SET threads TO 4;")
+
+        # Keep each API worker's DuckDB footprint bounded. Spill files are
+        # written to a per-connection directory and removed by DuckDB on close.
+        threads = max(1, int(os.getenv("TSD_DUCKDB_THREADS", "1")))
+        memory_limit = os.getenv("TSD_DUCKDB_MEMORY_LIMIT", "1GB").replace("'", "''")
+        max_temp_size = os.getenv("TSD_DUCKDB_MAX_TEMP_SIZE", "10GB").replace("'", "''")
+        self._temp_dir = Path(tempfile.mkdtemp(prefix="tsd-duckdb-"))
+        escaped_temp_dir = str(self._temp_dir).replace("'", "''")
+        self.con.execute(f"SET threads TO {threads}")
+        self.con.execute(f"SET memory_limit = '{memory_limit}'")
+        self.con.execute(f"SET max_temp_directory_size = '{max_temp_size}'")
+        self.con.execute(f"SET temp_directory = '{escaped_temp_dir}'")
 
         if not read_only:
             # Всегда выполняем DDL — IF NOT EXISTS гарантирует безопасность
@@ -393,7 +406,11 @@ class MartDB:
         return self
 
     def __exit__(self, *exc) -> None:
-        self.con.close()
+        try:
+            self.con.close()
+        finally:
+            if hasattr(self, "_temp_dir"):
+                shutil.rmtree(self._temp_dir, ignore_errors=True)
 
 
     def rebuild_from_raw(self, raw_db_path: str | Path) -> dict:

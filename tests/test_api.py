@@ -98,6 +98,82 @@ def test_export_csv(api_client):
     assert ";" in lines[0]  # разделитель
 
 
+def test_export_date_range_uses_request_timestamp(api_client):
+    import json
+
+    # Витрина формируется из строк запросов, поэтому request_ts заполнен
+    # для каждой пары и используется как временная метка экспорта.
+    r = api_client.get(
+        "/api/export?format=json&start_date=2000-01-01&end_date=2100-01-01"
+    )
+    assert r.status_code == 200
+    assert len(json.loads(r.content)) == 2
+
+    # Период после всех тестовых событий не должен возвращать строки.
+    r = api_client.get("/api/export?format=json&start_date=2100-01-01")
+    assert r.status_code == 200
+    assert json.loads(r.content) == []
+
+
+def test_export_and_dashboard_summary_apply_action_filter(api_client):
+    import json
+
+    pairs = api_client.get("/api/pairs").json()
+    selected_action = next((row["action"] for row in pairs if row.get("action")), None)
+    assert selected_action is not None
+
+    params = {"format": "json", "action": selected_action}
+    export_response = api_client.get("/api/export", params=params)
+    assert export_response.status_code == 200
+    exported = json.loads(export_response.content)
+    assert exported
+    assert all(row["action"] == selected_action for row in exported)
+
+    summary_response = api_client.get("/api/dashboard/summary", params={"action": selected_action})
+    assert summary_response.status_code == 200
+    assert summary_response.json()["total_pairs"] == len(exported)
+
+
+def test_export_endpoint_csv(api_client):
+    r = api_client.get("/api/export?format=csv&limit=100")
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]
+    assert "request_id" in r.content.decode("utf-8-sig").splitlines()[0]
+
+
+def test_export_endpoint_json_array(api_client):
+    import json
+
+    r = api_client.get("/api/export?format=json&limit=100")
+    assert r.status_code == 200
+    rows = json.loads(r.content)
+    assert len(rows) == 2
+    assert rows[0]["request_id"] is not None
+
+
+def test_export_endpoint_jsonl(api_client):
+    import json
+
+    r = api_client.get("/api/export?format=jsonl&limit=100")
+    assert r.status_code == 200
+    rows = [json.loads(line) for line in r.text.splitlines()]
+    assert len(rows) == 2
+
+
+def test_export_json_limit_rejected_before_stream(api_client):
+    r = api_client.get("/api/export?format=json&limit=50001")
+    assert r.status_code == 400
+    assert "50 000" in r.json()["detail"]
+
+
+def test_export_body_search_filter(api_client):
+    import json
+
+    r = api_client.get("/api/export?format=json&body_search=__definitely_not_present__")
+    assert r.status_code == 200
+    assert json.loads(r.content) == []
+
+
 def test_hourly_stats(api_client):
     r = api_client.get("/api/stats/hourly?hours=24")
     assert r.status_code == 200

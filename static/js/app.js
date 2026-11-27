@@ -263,107 +263,100 @@ function applyFilters() {
 }
 
 // ===== Экспорт данных =====
-function startExport() {
-    const format = document.querySelector('input[name="exportFormat"]:checked').value;
+async function startExport() {
+    const selectedFormat = document.querySelector('input[name="exportFormat"]:checked');
+    if (!selectedFormat) {
+        showExportNotification('Не выбран формат экспорта.', true);
+        return;
+    }
+    const format = selectedFormat.value;
     const limit = document.getElementById('export-limit').value;
 
-    const params = new URLSearchParams({
-        format: format,
-        limit: limit
-    });
-
-    if (currentFilters.method && currentFilters.method.length > 0) {
-        currentFilters.method.forEach(m => params.append('method', m));
-    }
-    if (currentFilters.device && currentFilters.device.length > 0) {
-        currentFilters.device.forEach(d => params.append('device', d));
-    }
-    if (currentFilters.status) {
-        params.set('pair_status', currentFilters.status);
-    }
-    if (currentFilters.threshold > 0) {
-        params.set('min_ms', Math.round(currentFilters.threshold * 1000));
-    }
-    if (currentFilters.startDate) {
-        params.set('start_date', currentFilters.startDate);
-    }
-    if (currentFilters.endDate) {
-        params.set('end_date', currentFilters.endDate);
-    }
-    if (currentFilters.bodySearch) {
-        params.set('body_search', currentFilters.bodySearch);
-    }
+    // Экспорт использует те же параметры фильтрации, что и таблица и счетчик,
+    // включая выбранные action.
+    const params = buildFilterParams({ format, limit });
 
     const url = `/api/export?${params.toString()}`;
-
     const modal = bootstrap.Modal.getInstance(document.getElementById('exportModal'));
     if (modal) modal.hide();
+    showExportNotification(`Подготовка выгрузки ${format.toUpperCase()}...`);
 
-    showExportNotification(`⏳ Начинается выгрузка в формате ${format.toUpperCase()}...`);
+    try {
+        const response = await fetch(url, { headers: { Accept: '*/*' } });
+        if (!response.ok) {
+            let detail = `HTTP ${response.status} ${response.statusText}`;
+            try {
+                const payload = await response.json();
+                if (payload.detail) detail = payload.detail;
+            } catch (_) {
+                // Ответ может быть обычным текстом от reverse proxy.
+            }
+            throw new Error(detail);
+        }
 
-    const link = document.createElement('a');
-    link.href = url;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+        const blob = await response.blob();
+        if (!blob.size) throw new Error('Сервер вернул пустой файл.');
 
-    setTimeout(() => {
-        showExportNotification(`✅ Файл сохранён. Проверьте папку "Загрузки".`);
-    }, 2000);
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        const plainName = disposition.match(/filename="?([^";]+)"?/i);
+        const filename = encodedName
+            ? decodeURIComponent(encodedName[1])
+            : (plainName ? plainName[1] : `tsd_export.${format === 'jsonl' ? 'jsonl' : format}`);
+
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+        showExportNotification(`Файл «${filename}» подготовлен к скачиванию.`);
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        showExportNotification(`Ошибка экспорта: ${error.message}`, true);
+    }
 }
 
-function showExportNotification(message) {
+function showExportNotification(message, isError = false) {
     const old = document.getElementById('export-notification');
     if (old) old.remove();
 
     const div = document.createElement('div');
     div.id = 'export-notification';
-    div.className = 'alert alert-success position-fixed';
-    div.style.cssText = 'top: 80px; right: 20px; z-index: 9999; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
-    div.innerHTML = `<i class="bi bi-check-circle-fill me-2"></i>${message}`;
+    div.className = `alert ${isError ? 'alert-danger' : 'alert-info'} position-fixed`;
+    div.style.cssText = 'top: 80px; right: 20px; z-index: 9999; min-width: 300px; max-width: 520px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+    div.textContent = message;
     document.body.appendChild(div);
 
     setTimeout(() => {
         div.style.transition = 'opacity 0.5s';
         div.style.opacity = '0';
         setTimeout(() => div.remove(), 500);
-    }, 4000);
+    }, 6000);
 }
 
 document.getElementById('exportModal').addEventListener('show.bs.modal', function () {
     const filtersDiv = document.getElementById('export-active-filters');
+    if (!filtersDiv) return;
     const parts = [];
 
     if (currentFilters.startDate && currentFilters.endDate) {
         parts.push(`📅 Период: ${currentFilters.startDate} — ${currentFilters.endDate}`);
     }
-    if (currentFilters.method && currentFilters.method.length > 0) {
-        parts.push(`🔧 Методы: ${currentFilters.method.join(', ')}`);
-    }
-    if (currentFilters.device && currentFilters.device.length > 0) {
-        parts.push(`📱 ТСД: ${currentFilters.device.join(', ')}`);
-    }
+    if (currentFilters.method?.length) parts.push(`🔧 Методы: ${currentFilters.method.join(', ')}`);
+    if (currentFilters.device?.length) parts.push(`📱 ТСД: ${currentFilters.device.join(', ')}`);
     if (currentFilters.status) {
-        const statusNames = {
-            'ok': 'Успешно',
-            'no_response': 'Без ответа',
-            'no_request': 'Без запроса'
-        };
+        const statusNames = { ok: 'Успешно', no_response: 'Без ответа', no_request: 'Без запроса' };
         parts.push(`📊 Статус: ${statusNames[currentFilters.status] || currentFilters.status}`);
     }
-    if (currentFilters.threshold > 0) {
-        parts.push(`⏱ Медленнее ${currentFilters.threshold} сек`);
-    }
-    if (currentFilters.requestId) {
-        parts.push(`🆔 ID запроса: ${currentFilters.requestId}`);
-    }
+    if (currentFilters.threshold > 0) parts.push(`⏱ Медленнее ${currentFilters.threshold} сек`);
+    if (currentFilters.requestId) parts.push(`🆔 ID запроса: ${currentFilters.requestId}`);
 
-    if (parts.length === 0) {
-        filtersDiv.innerHTML = '<span class="text-muted">Без фильтров (все данные за период)</span>';
-    } else {
-        filtersDiv.innerHTML = parts.map(p => `<div>${p}</div>`).join('');
-    }
+    filtersDiv.textContent = parts.length
+        ? parts.join(' · ')
+        : 'Без фильтров (все данные за период)';
 });
 
 // ===== Загрузка всех данных =====
@@ -381,9 +374,14 @@ function loadAll() {
 // ===== Сводка =====
 async function loadSummary() {
     try {
-        const r = await fetch('/api/dashboard/summary');
+        const params = buildFilterParams();
+        const query = params.toString();
+        const r = await fetch(`/api/dashboard/summary${query ? `?${query}` : ''}`);
         const d = await r.json();
-        document.getElementById('stat-total').textContent = d.total_pairs?.toLocaleString() || 0;
+        const filteredCount = Number(d.total_pairs || 0).toLocaleString('ru-RU');
+        document.getElementById('stat-total').textContent = filteredCount;
+        const exportCount = document.getElementById('export-matched-count');
+        if (exportCount) exportCount.textContent = filteredCount;
         document.getElementById('stat-ok').textContent = d.ok_pairs?.toLocaleString() || 0;
         document.getElementById('stat-no-resp').textContent = d.no_response?.toLocaleString() || 0;
         document.getElementById('stat-no-req').textContent = d.no_request?.toLocaleString() || 0;
