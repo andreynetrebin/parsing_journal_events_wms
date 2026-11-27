@@ -50,7 +50,7 @@
 <div class="container-fluid">
     <!-- Сводная статистика -->
     <div class="row mb-3" id="summary-row">
-        <div class="col-md-2"><div class="card stat-card"><div class="stat-value" id="stat-total">-</div><div class="stat-label">Событий по фильтрам</div></div></div>
+        <div class="col-md-2"><div class="card stat-card"><div class="stat-value" id="stat-total">-</div><div class="stat-label">Строк по фильтрам</div></div></div>
         <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-ok" id="stat-ok">-</div><div class="stat-label">Успешно</div></div></div>
         <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-warn" id="stat-no-resp">-</div><div class="stat-label">Без ответа</div></div></div>
         <div class="col-md-2"><div class="card stat-card"><div class="stat-value stat-danger" id="stat-no-req">-</div><div class="stat-label">Без запроса</div></div></div>
@@ -437,6 +437,7 @@
                                 <tr><td><code>end_date</code></td><td>str</td><td>Конец периода</td><td>2026-11-16 23:59:59</td></tr>
                                 <tr><td><code>method</code></td><td>list</td><td>Фильтр по методу (можно несколько)</td><td>method=A&method=B</td></tr>
                                 <tr><td><code>device</code></td><td>list</td><td>Фильтр по ТСД (можно несколько)</td><td>device=78:B8:D6:..</td></tr>
+                                <tr><td><code>action</code></td><td>list</td><td>Фильтр по действию (можно несколько)</td><td>action=PickingSKU</td></tr>
                                 <tr><td><code>pair_status</code></td><td>str</td><td><code>ok</code>, <code>no_response</code>, <code>no_request</code></td><td>pair_status=no_response</td></tr>
                                 <tr><td><code>min_ms</code></td><td>int</td><td>Минимальное время обработки (мс)</td><td>min_ms=5000</td></tr>
                                 <tr><td><code>limit</code></td><td>int</td><td>Макс. записей (по умолч. 10000, макс 500000)</td><td>limit=50000</td></tr>
