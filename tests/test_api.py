@@ -98,6 +98,23 @@ def test_export_csv(api_client):
     assert ";" in lines[0]  # разделитель
 
 
+def test_export_date_range_uses_request_timestamp(api_client):
+    import json
+
+    # The mart is built from request rows, so request_ts is the event timestamp
+    # for every exported pair. A broad range includes the fixture rows.
+    r = api_client.get(
+        "/api/export?format=json&start_date=2000-01-01&end_date=2100-01-01"
+    )
+    assert r.status_code == 200
+    assert len(json.loads(r.content)) == 2
+
+    # A range after all fixture events must return no rows.
+    r = api_client.get("/api/export?format=json&start_date=2100-01-01")
+    assert r.status_code == 200
+    assert json.loads(r.content) == []
+
+
 def test_export_endpoint_csv(api_client):
     r = api_client.get("/api/export?format=csv&limit=100")
     assert r.status_code == 200
