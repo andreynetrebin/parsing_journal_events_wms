@@ -131,11 +131,11 @@ def test_export_json_limit_rejected_before_stream(api_client):
 
 
 def test_export_body_search_filter(api_client):
-    r = api_client.get("/api/export?format=json&body_search=SortByPickingSKU")
-    assert r.status_code == 200
     import json
-    rows = json.loads(r.content)
-    assert rows
+
+    r = api_client.get("/api/export?format=json&body_search=__definitely_not_present__")
+    assert r.status_code == 200
+    assert json.loads(r.content) == []
 
 
 def test_hourly_stats(api_client):
