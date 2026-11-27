@@ -361,7 +361,7 @@ document.getElementById('exportModal').addEventListener('show.bs.modal', functio
     if (currentFilters.requestId) parts.push(`🆔 ID запроса: ${currentFilters.requestId}`);
 
     filtersDiv.textContent = parts.length
-        ? parts.join('\\n')
+        ? parts.join(' · ')
         : 'Без фильтров (все данные за период)';
 });
 
