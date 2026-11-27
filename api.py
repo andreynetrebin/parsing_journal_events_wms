@@ -99,17 +99,23 @@ def dashboard_summary(
     method: list[str] | None = Query(default=None),
     device: list[str] | None = Query(default=None),
     action: list[str] | None = Query(default=None),
+    pair_status: str | None = Query(None),
+    min_ms: int | None = Query(None),
+    request_id: int | None = Query(None),
+    body_search: str | None = Query(None, min_length=1, max_length=500),
     start_date: str | None = Query(None, description="YYYY-MM-DD HH:MM:SS"),
     end_date: str | None = Query(None, description="YYYY-MM-DD HH:MM:SS"),
 ):
     where = []
     params: list[Any] = []
 
+    # Используем тот же временной столбец, что и экспорт: одна строка витрины
+    # соответствует запросу, поэтому request_ts заполнен для каждой записи.
     if start_date:
-        where.append("COALESCE(response_ts, request_ts) >= CAST(? AS TIMESTAMP)")
+        where.append("request_ts >= CAST(? AS TIMESTAMP)")
         params.append(normalize_date(start_date, is_end=False))
     if end_date:
-        where.append("COALESCE(response_ts, request_ts) <= CAST(? AS TIMESTAMP)")
+        where.append("request_ts <= CAST(? AS TIMESTAMP)")
         params.append(normalize_date(end_date, is_end=True))
 
     if method:
@@ -123,6 +129,20 @@ def dashboard_summary(
         params.extend(device)
 
     _build_action_filter(action, where, params)
+
+    if pair_status:
+        where.append("pair_status = ?")
+        params.append(pair_status)
+    if min_ms is not None:
+        where.append("processing_ms >= ?")
+        params.append(min_ms)
+    if request_id is not None:
+        where.append("request_id = ?")
+        params.append(request_id)
+    if body_search:
+        where.append("(contains(lower(COALESCE(request_body_json, '')), lower(?)) "
+                     "OR contains(lower(COALESCE(response_body_json, '')), lower(?)))")
+        params.extend([body_search, body_search])
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
