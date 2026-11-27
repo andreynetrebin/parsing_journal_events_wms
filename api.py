@@ -940,11 +940,14 @@ def export_data(
     where = []
     params: list[Any] = []
 
+    # tsd_pairs_mart contains one row per request, so request_ts is non-NULL
+    # by construction. Filtering/sorting this column directly lets DuckDB
+    # apply row-group zonemaps before reading the large JSON body columns.
     if start_date:
-        where.append("COALESCE(request_ts, response_ts) >= CAST(? AS TIMESTAMP)")
+        where.append("request_ts >= CAST(? AS TIMESTAMP)")
         params.append(normalize_date(start_date, is_end=False))
     if end_date:
-        where.append("COALESCE(request_ts, response_ts) <= CAST(? AS TIMESTAMP)")
+        where.append("request_ts <= CAST(? AS TIMESTAMP)")
         params.append(normalize_date(end_date, is_end=True))
     if method:
         placeholders = ", ".join(["?"] * len(method))
@@ -981,7 +984,7 @@ def export_data(
             request_body_json, response_body_json
         FROM tsd_pairs_mart
         {where_sql}
-        ORDER BY COALESCE(request_ts, response_ts) DESC
+        ORDER BY request_ts DESC
         LIMIT {int(limit)}
     """
 
