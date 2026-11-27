@@ -1029,7 +1029,7 @@ def export_data(
                 yield "\ufeff".encode('utf-8')  # BOM для Excel
                 yield (";".join(columns) + "\n").encode('utf-8')
 
-                # Потоковая запись чанками по 10 000 строк (безопасно для памяти)
+                # Потоковая запись небольшими блоками
                 while True:
                     rows = cursor.fetchmany(1000)
                     if not rows:
@@ -1049,7 +1049,7 @@ def export_data(
             elif format == "jsonl":
                 # JSONL тоже потоковый и безопасный
                 while True:
-                    rows = cursor.fetchmany(10000)
+                    rows = cursor.fetchmany(1000)
                     if not rows:
                         break
                     for row in rows:
