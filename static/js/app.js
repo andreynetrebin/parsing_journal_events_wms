@@ -272,15 +272,9 @@ async function startExport() {
     const format = selectedFormat.value;
     const limit = document.getElementById('export-limit').value;
 
-    const params = new URLSearchParams({ format, limit });
-    if (currentFilters.method?.length) currentFilters.method.forEach(m => params.append('method', m));
-    if (currentFilters.device?.length) currentFilters.device.forEach(d => params.append('device', d));
-    if (currentFilters.status) params.set('pair_status', currentFilters.status);
-    if (currentFilters.threshold > 0) params.set('min_ms', Math.round(currentFilters.threshold * 1000));
-    if (currentFilters.startDate) params.set('start_date', currentFilters.startDate);
-    if (currentFilters.endDate) params.set('end_date', currentFilters.endDate);
-    if (currentFilters.bodySearch) params.set('body_search', currentFilters.bodySearch);
-    if (currentFilters.requestId) params.set('request_id', currentFilters.requestId);
+    // Экспорт использует те же параметры фильтрации, что и таблица и счетчик,
+    // включая выбранные action.
+    const params = buildFilterParams({ format, limit });
 
     const url = `/api/export?${params.toString()}`;
     const modal = bootstrap.Modal.getInstance(document.getElementById('exportModal'));
@@ -380,9 +374,14 @@ function loadAll() {
 // ===== Сводка =====
 async function loadSummary() {
     try {
-        const r = await fetch('/api/dashboard/summary');
+        const params = buildFilterParams();
+        const query = params.toString();
+        const r = await fetch(`/api/dashboard/summary${query ? `?${query}` : ''}`);
         const d = await r.json();
-        document.getElementById('stat-total').textContent = d.total_pairs?.toLocaleString() || 0;
+        const filteredCount = Number(d.total_pairs || 0).toLocaleString('ru-RU');
+        document.getElementById('stat-total').textContent = filteredCount;
+        const exportCount = document.getElementById('export-matched-count');
+        if (exportCount) exportCount.textContent = filteredCount;
         document.getElementById('stat-ok').textContent = d.ok_pairs?.toLocaleString() || 0;
         document.getElementById('stat-no-resp').textContent = d.no_response?.toLocaleString() || 0;
         document.getElementById('stat-no-req').textContent = d.no_request?.toLocaleString() || 0;
